@@ -1,0 +1,24 @@
+import 'package:flutter/material.dart';
+
+class TaskModel {
+  final String category;
+  final DateTime createdAt;
+  final String description;
+  final DateTime dueDate;
+  final String priority;
+  final String reminder;
+  final String status;
+  final String title;
+
+  TaskModel({
+    required this.category,
+    required this.createdAt,
+    required this.description,
+    required this.dueDate,
+    required this.priority,      
+    required this.reminder,
+    required this.status,
+    required this.title,
+    
+  });
+}
