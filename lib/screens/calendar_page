@@ -1,0 +1,161 @@
+import 'package:flutter/material.dart';
+import 'package:table_calendar/table_calendar.dart';
+
+import 'models/task_model.dart';
+import 'task_card.dart';
+
+class CalendarPage extends StatefulWidget {
+  const CalendarPage({super.key});
+
+  @override
+  State<CalendarPage> createState() => _CalendarPageState();
+}
+
+class _CalendarPageState extends State<CalendarPage> {
+  DateTime selectedDay = DateTime(2025, 5, 28);
+  DateTime focusedDay = DateTime(2025, 5, 27);
+
+  // TODO: replace this with tasks loaded from Firestore.
+  final List<TaskModel> tasks = [
+    TaskModel(
+      category: "personal",
+      createdAt: DateTime.now(),
+      description: 'Finish the mobile app assignment',
+      dueDate: DateTime(2025, 5, 28),
+      priority: "High Priority",
+      reminder: "1 hour before",
+      status: "pending",
+      title: "Mobile App Assignment",
+    ),
+    TaskModel(
+      category: "personal",
+      createdAt: DateTime.now(),
+      description: 'Weekly study group',
+      dueDate: DateTime(2025, 5, 28, 15, 0),
+      priority: "Medium Priority",
+      reminder: "1 hour before",
+      status: "in_progress",
+      title: "Study Group Meeting",
+    ),
+    TaskModel(
+      category: "personal",
+      createdAt: DateTime.now(),
+      description: 'Read chapter 6 for class',
+      dueDate: DateTime(2025, 5, 28, 20, 0),
+      priority: "Low Priority",
+      reminder: "1 hour before",
+      status: "in_progress",
+      title: "Read Chapter 6",
+    ),
+     TaskModel(
+      category: "personal",
+      createdAt: DateTime.now(),
+      description: 'Finish the mobile app assignment',
+      dueDate: DateTime(2025, 5, 29, 12, 0),
+      priority: "Low Priority",
+      reminder: "1 hour before",
+      status: "in_progress",
+      title: "Testing",
+    ),
+  ];
+
+  // Only the tasks whose dueDate matches the selected day.
+  List<TaskModel> get _tasksForSelectedDay {
+    return tasks.where((task) => isSameDay(task.dueDate, selectedDay)).toList()
+      ..sort((a, b) => a.dueDate.compareTo(b.dueDate));
+  }
+
+  static const _months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+
+  String get _formattedSelectedDay =>
+      '${selectedDay.day} ${_months[selectedDay.month - 1]} ${selectedDay.year}';
+
+  @override
+  Widget build(BuildContext context) {
+    final tasksToday = _tasksForSelectedDay;
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            TableCalendar(
+              firstDay: DateTime(2024),
+              lastDay: DateTime(2030),
+              focusedDay: focusedDay,
+
+              selectedDayPredicate: (day) => isSameDay(day, selectedDay),
+
+              onDaySelected: (selected, focused) {
+                setState(() {
+                  selectedDay = selected;
+                  focusedDay = focused;
+                });
+              },
+
+              onPageChanged: (focused) {
+                // Keep the calendar on the page the user swipes to,
+                // without changing which day is selected.
+                focusedDay = focused;
+              },
+
+              eventLoader: (day) =>
+                  tasks.where((task) => isSameDay(task.dueDate, day)).toList(),
+
+              headerStyle: const HeaderStyle(
+                titleCentered: true,
+                formatButtonVisible: false,
+              ),
+
+              calendarStyle: CalendarStyle(
+                todayDecoration: BoxDecoration(
+                  color: Colors.deepPurple.shade200,
+                  shape: BoxShape.circle,
+                ),
+                selectedDecoration: const BoxDecoration(
+                  color: Colors.deepPurple,
+                  shape: BoxShape.circle,
+                ),
+                markerDecoration: const BoxDecoration(
+                  color: Colors.deepPurple,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                "Tasks for $_formattedSelectedDay",
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            Expanded(
+              child: tasksToday.isEmpty
+                  ? Center(
+                      child: Text(
+                        "No tasks for this day",
+                        style: TextStyle(color: Colors.grey.shade600),
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: tasksToday.length,
+                      itemBuilder: (_, index) {
+                        return TaskCard(task: tasksToday[index]);
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
