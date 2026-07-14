@@ -78,17 +78,42 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     // Prevent double-click from running this function twice.
     if (_isSaving) return;
 
-    if (_titleController.text.trim().isEmpty ||
-        selectedCategory == null ||
-        selectedDate == null ||
-        selectedTime == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please complete all required fields'),
-        ),
-      );
-      return;
-    }
+    if (_titleController.text.trim().isEmpty) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('Please enter a task title.'),
+    ),
+  );
+  return;
+}
+
+if (_descriptionController.text.trim().isEmpty) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('Please enter a task description.'),
+    ),
+  );
+  return;
+}
+
+if (selectedCategory == null) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('Please select a category.'),
+    ),
+  );
+  return;
+}
+
+if (selectedDate == null || selectedTime == null) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('Please select a due date and time.'),
+    ),
+  );
+  return;
+}
+      
 
     final selectedDateTime = DateTime(
       selectedDate!.year,
