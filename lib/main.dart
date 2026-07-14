@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
 import 'widgets/student_bottom_nav_bar.dart';
 import 'screens/task_list_screen.dart';
+import 'screens/calendar_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -62,7 +63,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final List<Widget> _screens = [
   const Center(child: Text('Home Screen')),
   const TaskListScreen(),
-  const Center(child: Text('Calendar Screen')),
+  const CalendarPage(),
   const Center(child: Text('Categories Screen')),
   const Center(child: Text('Profile Screen')),
 ];
