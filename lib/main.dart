@@ -1,12 +1,12 @@
-import 'package:device_preview/device_preview.dart';
-import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:device_preview/device_preview.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/material.dart';
 
 import 'firebase_options.dart';
-import 'widgets/student_bottom_nav_bar.dart';
-import 'screens/task_list_screen.dart';
 import 'screens/calendar_screen.dart';
+import 'screens/task_list_screen.dart';
+import 'widgets/student_bottom_nav_bar.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,11 +16,11 @@ Future<void> main() async {
   );
 
   runApp(
-  DevicePreview(
-    enabled: true,
-    builder: (context) => const MyApp(),
-  ),
-);
+    DevicePreview(
+      enabled: true,
+      builder: (context) => const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -29,57 +29,64 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-  debugShowCheckedModeBanner: false,
-
-  useInheritedMediaQuery: true,
-  locale: DevicePreview.locale(context),
-  builder: DevicePreview.appBuilder,
-
-  title: 'Student Task Manager',
-
-  theme: ThemeData(
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: Colors.deepPurple,
-    ),
-    useMaterial3: true,
-  ),
-
-  home: const DashboardScreen(),
-);
+      debugShowCheckedModeBanner: false,
+      useInheritedMediaQuery: true,
+      locale: DevicePreview.locale(context),
+      builder: DevicePreview.appBuilder,
+      title: 'Student Task Manager',
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.deepPurple,
+        ),
+        useMaterial3: true,
+      ),
+      home: const DashboardScreen(),
+    );
   }
 }
-
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
   @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
+  State<DashboardScreen> createState() {
+    return _DashboardScreenState();
+  }
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
   int _currentIndex = 0;
 
-  final List<Widget> _screens = [
-  const Center(child: Text('Home Screen')),
-  const TaskListScreen(),
-  const CalendarPage(),
-  const Center(child: Text('Categories Screen')),
-  const Center(child: Text('Profile Screen')),
-];
+  final List<Widget> _screens = const [
+    Center(
+      child: Text('Home Screen'),
+    ),
+    TaskListScreen(),
+    CalendarPage(),
+    Center(
+      child: Text('Categories Screen'),
+    ),
+    Center(
+      child: Text('Profile Screen'),
+    ),
+  ];
+
+  void _changeScreen(int index) {
+    setState(() {
+      _currentIndex = index;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _screens[_currentIndex],
-
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _screens,
+      ),
       bottomNavigationBar: StudentBottomNavBar(
         currentIndex: _currentIndex,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
+        onTap: _changeScreen,
       ),
     );
   }
@@ -107,13 +114,14 @@ class UserDataScreen extends StatelessWidget {
             );
           }
 
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (snapshot.connectionState ==
+              ConnectionState.waiting) {
             return const Center(
               child: CircularProgressIndicator(),
             );
           }
 
-          final docs = snapshot.data!.docs;
+          final docs = snapshot.data?.docs ?? [];
 
           if (docs.isEmpty) {
             return const Center(
@@ -124,7 +132,8 @@ class UserDataScreen extends StatelessWidget {
           return ListView.builder(
             itemCount: docs.length,
             itemBuilder: (context, index) {
-              final data = docs[index].data() as Map<String, dynamic>;
+              final data =
+                  docs[index].data() as Map<String, dynamic>;
 
               return Card(
                 margin: const EdgeInsets.all(10),
@@ -132,8 +141,13 @@ class UserDataScreen extends StatelessWidget {
                   leading: const CircleAvatar(
                     child: Icon(Icons.person),
                   ),
-                  title: Text(data['username'].toString()),
-                  subtitle: Text("UID : ${data['uid']}"),
+                  title: Text(
+                    data['username']?.toString() ??
+                        'Unknown user',
+                  ),
+                  subtitle: Text(
+                    'UID: ${data['uid']?.toString() ?? '-'}',
+                  ),
                 ),
               );
             },

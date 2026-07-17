@@ -1,15 +1,10 @@
-import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+
 import 'edit_task_screen.dart';
 
-// This screen displays details of a specific task.
-// Users can mark the task as completed or delete it
 class TaskDetailScreen extends StatelessWidget {
-
-  // Stores the Firestore document ID of the selected task.
   final String taskId;
-
-  // Stores all task information passed from TaskListScreen.
   final Map<String, dynamic> taskData;
 
   const TaskDetailScreen({
@@ -18,32 +13,32 @@ class TaskDetailScreen extends StatelessWidget {
     required this.taskData,
   });
 
-  // Provides a different colour based on status of a task
   Color statusColor(String status) {
     switch (status) {
       case 'Completed':
         return Colors.green;
+
       case 'Overdue':
         return Colors.red;
+
       default:
         return Colors.orange;
     }
   }
 
-  // Provides a different colour based on the priority of a task
   Color priorityColor(String priority) {
     switch (priority) {
       case 'High':
         return Colors.red;
+
       case 'Medium':
         return Colors.orange;
+
       default:
         return Colors.green;
     }
   }
 
-  // Transforms a month number into a short month name.
-  // Example: 5 -> May
   String monthName(int month) {
     const months = [
       'Jan',
@@ -63,38 +58,187 @@ class TaskDetailScreen extends StatelessWidget {
     return months[month - 1];
   }
 
-  // Converts Firestore Timestamp into a readable date format.
-  // Example: 2025-05-28 -> 28 May 2025
   String formatDate(dynamic dueDate) {
     if (dueDate is Timestamp) {
-      final date = dueDate.toDate();
-      return "${date.day} ${monthName(date.month)} ${date.year}";
+      final DateTime date = dueDate.toDate();
+
+      final int displayHour = date.hour == 0
+          ? 12
+          : date.hour > 12
+              ? date.hour - 12
+              : date.hour;
+
+      final String minute =
+          date.minute.toString().padLeft(2, '0');
+
+      final String period =
+          date.hour >= 12 ? 'PM' : 'AM';
+
+      return '${date.day} ${monthName(date.month)} ${date.year}, '
+          '$displayHour:$minute $period';
+    }
+
+    if (dueDate == null) {
+      return 'No due date';
     }
 
     return dueDate.toString();
   }
 
+  Future<void> _markTaskAsCompleted(
+    BuildContext context,
+  ) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('tasks')
+          .doc(taskId)
+          .update({
+        'status': 'Completed',
+        'completedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (!context.mounted) {
+        return;
+      }
+
+      Navigator.pop(context);
+    } on FirebaseException catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error.message ??
+                'Unable to mark the task as completed.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Unable to mark the task as completed.',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _deleteTask(
+    BuildContext context,
+  ) async {
+    final bool? shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete Task'),
+          content: const Text(
+            'Are you sure you want to delete this task?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, true);
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red,
+              ),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldDelete != true) {
+      return;
+    }
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('tasks')
+          .doc(taskId)
+          .delete();
+
+      if (!context.mounted) {
+        return;
+      }
+
+      Navigator.pop(context);
+    } on FirebaseException catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error.message ?? 'Unable to delete the task.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to delete the task.'),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Retrieve task information from the passed taskData.
-    final title = taskData['title'] ?? '';
-    final description = taskData['description'] ?? '';
-    final category = taskData['category'] ?? '';
-    final priority = taskData['priority'] ?? 'Low';
-    final status = taskData['status'] ?? 'Pending';
-    final dueDate = formatDate(taskData['dueDate']);
+    final String title =
+        taskData['title']?.toString() ?? '';
+
+    final String description =
+        taskData['description']?.toString() ?? '';
+
+    final String category =
+        taskData['category']?.toString() ?? '';
+
+    final String priority =
+        taskData['priority']?.toString() ?? 'Low';
+
+    final String status =
+        taskData['status']?.toString() ?? 'Pending';
+
+    final String reminder =
+        taskData['reminder']?.toString() ?? 'No reminder';
+
+    final String dueDate = formatDate(
+      taskData['dueDate'],
+    );
+
+    final bool isCompleted =
+        status.trim().toLowerCase() == 'completed';
 
     return Scaffold(
       backgroundColor: const Color(0xffF6F7FB),
-
-      
-      // App Bar
       appBar: AppBar(
         backgroundColor: const Color(0xffF6F7FB),
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black),
+        iconTheme: const IconThemeData(
+          color: Colors.black,
+        ),
         title: const Text(
-          "Task Details",
+          'Task Details',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             color: Colors.black,
@@ -102,23 +246,18 @@ class TaskDetailScreen extends StatelessWidget {
         ),
         centerTitle: true,
       ),
-
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
-
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
-            
-            // Task Status Badge
             Container(
               padding: const EdgeInsets.symmetric(
                 horizontal: 14,
                 vertical: 6,
               ),
               decoration: BoxDecoration(
-                color: statusColor(status).withOpacity(.15),
+                color: statusColor(status).withOpacity(0.15),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
@@ -129,10 +268,7 @@ class TaskDetailScreen extends StatelessWidget {
                 ),
               ),
             ),
-
             const SizedBox(height: 18),
-
-            // Display task title.
             Text(
               title,
               style: const TextStyle(
@@ -140,10 +276,7 @@ class TaskDetailScreen extends StatelessWidget {
                 fontWeight: FontWeight.bold,
               ),
             ),
-
             const SizedBox(height: 10),
-
-            // Display task category.
             Container(
               padding: const EdgeInsets.symmetric(
                 horizontal: 14,
@@ -161,160 +294,156 @@ class TaskDetailScreen extends StatelessWidget {
                 ),
               ),
             ),
-
             const SizedBox(height: 28),
-
-            
-            // Description Section
             const Text(
-              "Description",
+              'Description',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
             ),
-
             const SizedBox(height: 8),
-
             Text(
               description,
-              style: const TextStyle(fontSize: 16),
-            ),
-
-            const SizedBox(height: 30),
-
-            const Divider(),
-
-            const SizedBox(height: 10),
-
-            
-            // Task Information
-            detailRow(
-              Icons.calendar_today,
-              "Due Date",
-              dueDate,
-            ),
-
-            const SizedBox(height: 18),
-
-            detailRow(
-              Icons.flag,
-              "Priority",
-              priority,
-            ),
-
-            const SizedBox(height: 18),
-
-            detailRow(
-              Icons.category,
-              "Category",
-              category,
-            ),
-
-            const SizedBox(height: 18),
-
-            detailRow(
-              Icons.check_circle_outline,
-              "Status",
-              status,
-            ),
-
-            const SizedBox(height: 40),
-
-            
-            // Mark Task as Completed
-            // Updates the task status in Firestore.
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-
-              child: ElevatedButton.icon(
-                icon: const Icon(Icons.check),
-                label: const Text("Mark as Completed"),
-
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-
-                onPressed: () async {
-                  await FirebaseFirestore.instance
-                      .collection('tasks')
-                      .doc(taskId)
-                      .update({
-                    'status': 'Completed',
-                  });
-
-                  // Return to the previous screen.
-                  Navigator.pop(context);
-                },
+              style: const TextStyle(
+                fontSize: 16,
               ),
             ),
+            const SizedBox(height: 30),
+            const Divider(),
+            const SizedBox(height: 10),
+            detailRow(
+              Icons.calendar_today,
+              'Due Date',
+              dueDate,
+            ),
+            const SizedBox(height: 18),
+            detailRow(
+              Icons.flag,
+              'Priority',
+              priority,
+              valueColor: priorityColor(priority),
+            ),
+            const SizedBox(height: 18),
+            detailRow(
+              Icons.category,
+              'Category',
+              category,
+            ),
+            const SizedBox(height: 18),
+            detailRow(
+              Icons.notifications_outlined,
+              'Reminder',
+              reminder,
+            ),
+            const SizedBox(height: 18),
+            detailRow(
+              Icons.check_circle_outline,
+              'Status',
+              status,
+              valueColor: statusColor(status),
+            ),
+            const SizedBox(height: 40),
+
+            if (!isCompleted)
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.check),
+                  label: const Text(
+                    'Mark as Completed',
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  onPressed: () {
+                    _markTaskAsCompleted(context);
+                  },
+                ),
+              ),
+
+            if (isCompleted)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  vertical: 14,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: Colors.green,
+                  ),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.check_circle,
+                      color: Colors.green,
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      'Task Completed',
+                      style: TextStyle(
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
 
             const SizedBox(height: 15),
 
-            
-            // Edit and Delete Buttons
             Row(
               children: [
+                if (!isCompleted)
+  Expanded(
+    child: OutlinedButton(
+      onPressed: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => EditTaskScreen(
+              taskId: taskId,
+              taskData: taskData,
+            ),
+          ),
+        );
 
-                // Navigate to Edit Task Screen.
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () async {
-  await Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (_) => EditTaskScreen(
-        taskId: taskId,
-        taskData: taskData,
+        if (context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      style: OutlinedButton.styleFrom(
+        foregroundColor: Colors.blue,
+        side: const BorderSide(
+          color: Colors.blue,
+        ),
       ),
+      child: const Text('Edit Task'),
     ),
-  );
-
-  if (context.mounted) {
-    Navigator.pop(context);
-  }
-},
-
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.blue,
-                      side: const BorderSide(
-                        color: Colors.blue,
-                      ),
-                    ),
-
-                    child: const Text("Edit Task"),
-                  ),
-                ),
-
-                const SizedBox(width: 15),
-
-                // Delete the task from Firestore.
+  ),
+                if (!isCompleted)
+  const SizedBox(width: 15),
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () async {
-
-                      await FirebaseFirestore.instance
-                          .collection('tasks')
-                          .doc(taskId)
-                          .delete();
-
-                      // Return to Task List Screen.
-                      Navigator.pop(context);
+                    onPressed: () {
+                      _deleteTask(context);
                     },
-
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.red,
                       side: const BorderSide(
                         color: Colors.red,
                       ),
                     ),
-
-                    child: const Text("Delete Task"),
+                    child: const Text('Delete Task'),
                   ),
                 ),
               ],
@@ -325,24 +454,20 @@ class TaskDetailScreen extends StatelessWidget {
     );
   }
 
-  
-  // Reusable widget for displaying task information.
-  // This reduces duplicate code and keeps the UI consistent.
   Widget detailRow(
     IconData icon,
     String title,
-    String value,
-  ) {
+    String value, {
+    Color? valueColor,
+  }) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-
         Icon(
           icon,
           color: Colors.grey[700],
         ),
-
         const SizedBox(width: 12),
-
         Expanded(
           child: Text(
             title,
@@ -352,12 +477,15 @@ class TaskDetailScreen extends StatelessWidget {
             ),
           ),
         ),
-
-        Text(
-          value,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              color: valueColor,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
           ),
         ),
       ],

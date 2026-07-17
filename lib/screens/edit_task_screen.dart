@@ -1,13 +1,8 @@
-import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
 
-// This screen allows the user to edit an existing task.
-// The task information is received from the Task Detail Screen.
 class EditTaskScreen extends StatefulWidget {
-  // Firestore document ID of the selected task.
   final String taskId;
-
-  // Stores all task information passed from the previous screen.
   final Map<String, dynamic> taskData;
 
   const EditTaskScreen({
@@ -17,82 +12,100 @@ class EditTaskScreen extends StatefulWidget {
   });
 
   @override
-  State<EditTaskScreen> createState() => _EditTaskScreenState();
+  State<EditTaskScreen> createState() =>
+      _EditTaskScreenState();
 }
 
 class _EditTaskScreenState extends State<EditTaskScreen> {
-
-  // Used to validate the form before updating the task.
   final _formKey = GlobalKey<FormState>();
 
-  // Controllers for the text input fields.
-  late TextEditingController titleController;
-  late TextEditingController descriptionController;
+  late final TextEditingController titleController;
+  late final TextEditingController descriptionController;
 
-  // Variables used to store the selected values.
-  String selectedCategory = "";
-  String selectedPriority = "Low";
-  String reminder = "1 day before";
+  String? selectedCategory;
+  String selectedPriority = 'Low';
+  String selectedReminder = 'No reminder';
 
-  // Stores the selected due date.
-  DateTime selectedDate = DateTime.now();
+  DateTime selectedDateTime = DateTime.now();
 
-  // Available categories shown in the dropdown menu.
+  bool _isUpdating = false;
+
+  // Must match AddTaskScreen exactly.
   final List<String> categories = [
-    "Mobile App Development",
-    "Database",
-    "Programming",
-    "Assignment",
-    "Quiz",
-    "Other"
+    'Assignment',
+    'Quiz',
+    'Project',
+    'Homework',
+    'Exam',
   ];
 
-  // Available reminder options.
+  // Must match AddTaskScreen exactly.
   final List<String> reminders = [
-    "None",
-    "1 day before",
-    "2 days before",
-    "1 week before"
+    'No reminder',
+    '10 minutes before',
+    '1 hour before',
+    '1 day before',
   ];
 
   @override
   void initState() {
     super.initState();
 
-    // Load the existing task data into the input fields.
-    titleController =
-        TextEditingController(text: widget.taskData['title']);
+    titleController = TextEditingController(
+      text: widget.taskData['title']?.toString() ?? '',
+    );
 
-    descriptionController =
-        TextEditingController(text: widget.taskData['description']);
+    descriptionController = TextEditingController(
+      text: widget.taskData['description']?.toString() ?? '',
+    );
 
-    selectedCategory =
-        widget.taskData['category'] ?? categories.first;
+    final String savedCategory =
+        widget.taskData['category']?.toString().trim() ?? '';
 
-    selectedPriority =
-        widget.taskData['priority'] ?? "Low";
+    selectedCategory = categories.contains(savedCategory)
+        ? savedCategory
+        : null;
 
-    // Convert the Firestore Timestamp into a DateTime object.
-    final dueDate = widget.taskData['dueDate'];
+    final String savedPriority =
+        widget.taskData['priority']?.toString().trim() ?? 'Low';
+
+    selectedPriority = [
+      'Low',
+      'Medium',
+      'High',
+    ].contains(savedPriority)
+        ? savedPriority
+        : 'Low';
+
+    final String savedReminder =
+        widget.taskData['reminder']?.toString().trim() ??
+            'No reminder';
+
+    selectedReminder = reminders.contains(savedReminder)
+        ? savedReminder
+        : 'No reminder';
+
+    final dynamic dueDate = widget.taskData['dueDate'];
 
     if (dueDate is Timestamp) {
-      selectedDate = dueDate.toDate();
+      selectedDateTime = dueDate.toDate();
+    } else if (dueDate is DateTime) {
+      selectedDateTime = dueDate;
+    } else if (dueDate is String) {
+      selectedDateTime =
+          DateTime.tryParse(dueDate) ?? DateTime.now();
     }
   }
 
   @override
   void dispose() {
-    // Release the controllers when the screen is closed.
     titleController.dispose();
     descriptionController.dispose();
     super.dispose();
   }
 
-  // Converts a DateTime object into a readable format.
-  // Example: 28 May 2025
-  String formatDate(DateTime date) {
+  String _monthName(int month) {
     const months = [
-      '',
       'Jan',
       'Feb',
       'Mar',
@@ -104,19 +117,35 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
       'Sep',
       'Oct',
       'Nov',
-      'Dec'
+      'Dec',
     ];
 
-    return "${date.day} ${months[date.month]} ${date.year}";
+    return months[month - 1];
   }
 
-  // Returns a different colour based on the selected priority.
-  Color priorityColor(String priority) {
+  String _formatDateTime(DateTime date) {
+    final int displayHour = date.hour == 0
+        ? 12
+        : date.hour > 12
+            ? date.hour - 12
+            : date.hour;
+
+    final String minute =
+        date.minute.toString().padLeft(2, '0');
+
+    final String period =
+        date.hour >= 12 ? 'PM' : 'AM';
+
+    return '${date.day} ${_monthName(date.month)} '
+        '${date.year}, $displayHour:$minute $period';
+  }
+
+  Color _priorityColor(String priority) {
     switch (priority) {
-      case "High":
+      case 'High':
         return Colors.red;
 
-      case "Medium":
+      case 'Medium':
         return Colors.orange;
 
       default:
@@ -124,88 +153,187 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
     }
   }
 
-  // Opens the calendar so the user can choose a due date.
-  Future<void> pickDate() async {
-    DateTime? picked = await showDatePicker(
+  Future<void> _pickDateTime() async {
+    if (_isUpdating) {
+      return;
+    }
+
+    final DateTime now = DateTime.now();
+
+    final DateTime initialDate =
+        selectedDateTime.isBefore(now)
+            ? now
+            : selectedDateTime;
+
+    final DateTime? pickedDate = await showDatePicker(
       context: context,
-      initialDate: selectedDate,
-      firstDate: DateTime(2024),
+      initialDate: initialDate,
+      firstDate: DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ),
       lastDate: DateTime(2035),
     );
 
-    // Update the selected date after the user chooses one.
-    if (picked != null) {
-      setState(() {
-        selectedDate = picked;
-      });
+    if (pickedDate == null || !mounted) {
+      return;
     }
-  }
 
-  // Updates the task information in Firestore.
-  Future<void> updateTask() async {
-
-    // Stop the update if any required field is empty.
-    if (!_formKey.currentState!.validate()) return;
-
-    await FirebaseFirestore.instance
-        .collection("tasks")
-        .doc(widget.taskId)
-        .update({
-
-      "title": titleController.text.trim(),
-      "description": descriptionController.text.trim(),
-      "category": selectedCategory,
-      "priority": selectedPriority,
-      "dueDate": Timestamp.fromDate(selectedDate),
-
-    });
-
-    if (!mounted) return;
-
-    // Display a success message after updating.
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Task updated successfully"),
+    final TimeOfDay? pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(
+        selectedDateTime,
       ),
     );
 
-    // Return to the previous screen.
-    Navigator.pop(context);
+    if (pickedTime == null || !mounted) {
+      return;
+    }
+
+    setState(() {
+      selectedDateTime = DateTime(
+        pickedDate.year,
+        pickedDate.month,
+        pickedDate.day,
+        pickedTime.hour,
+        pickedTime.minute,
+      );
+    });
   }
 
-  // Builds one of the priority selection buttons.
-  Widget priorityButton(String priority) {
+  Future<void> _updateTask() async {
+    if (_isUpdating) {
+      return;
+    }
 
-    bool selected = selectedPriority == priority;
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    if (selectedCategory == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a category.'),
+        ),
+      );
+
+      return;
+    }
+
+    if (selectedDateTime.isBefore(DateTime.now())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Task date and time cannot be before the current time.',
+          ),
+        ),
+      );
+
+      return;
+    }
+
+    setState(() {
+      _isUpdating = true;
+    });
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('tasks')
+          .doc(widget.taskId)
+          .update({
+        'title': titleController.text.trim(),
+        'description':
+            descriptionController.text.trim(),
+        'category': selectedCategory,
+        'priority': selectedPriority,
+        'reminder': selectedReminder,
+        'dueDate': Timestamp.fromDate(
+          selectedDateTime,
+        ),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Task updated successfully.',
+          ),
+        ),
+      );
+
+      Navigator.pop(context);
+    } on FirebaseException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error.message ??
+                'Unable to update the task.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Unable to update the task.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUpdating = false;
+        });
+      }
+    }
+  }
+
+  Widget _priorityButton(String priority) {
+    final bool isSelected =
+        selectedPriority == priority;
+
+    final Color color =
+        _priorityColor(priority);
 
     return Expanded(
       child: GestureDetector(
-        onTap: () {
-
-          // Change the selected priority.
-          setState(() {
-            selectedPriority = priority;
-          });
-
-        },
+        onTap: _isUpdating
+            ? null
+            : () {
+                setState(() {
+                  selectedPriority = priority;
+                });
+              },
         child: Container(
           height: 45,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: selected
-                ? priorityColor(priority)
-                : priorityColor(priority).withOpacity(.12),
+            color: isSelected
+                ? color
+                : color.withOpacity(0.12),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: priorityColor(priority),
+              color: color,
             ),
           ),
           child: Text(
             priority,
             style: TextStyle(
-              color: selected
-                  ? Colors.white
-                  : priorityColor(priority),
+              color:
+                  isSelected ? Colors.white : color,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -214,207 +342,256 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
     );
   }
 
+  InputDecoration _inputDecoration() {
+    return InputDecoration(
+      filled: true,
+      fillColor: Colors.white,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(
+          color: Colors.grey.shade300,
+        ),
+      ),
+      disabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(
+          color: Colors.grey.shade300,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-
-    return Scaffold(
-      backgroundColor: const Color(0xffF6F7FB),
-
-     
-      // App Bar
-      appBar: AppBar(
+    return PopScope(
+      canPop: !_isUpdating,
+      child: Scaffold(
         backgroundColor: const Color(0xffF6F7FB),
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black),
-        title: const Text(
-          "Edit Task",
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
+        appBar: AppBar(
+          backgroundColor: const Color(0xffF6F7FB),
+          elevation: 0,
+          iconTheme: const IconThemeData(
             color: Colors.black,
           ),
+          title: const Text(
+            'Edit Task',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Colors.black,
+            ),
+          ),
+          centerTitle: true,
         ),
-        centerTitle: true,
-      ),
-
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-
-        child: Form(
-          key: _formKey,
-
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-
-              
-              // Title Field
-              const Text("Title"),
-
-              const SizedBox(height: 8),
-
-              TextFormField(
-                controller: titleController,
-
-                // Ensure the title is not empty.
-                validator: (value) =>
-                    value!.isEmpty ? "Required" : null,
-
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Title',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-              ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: titleController,
+                  enabled: !_isUpdating,
+                  validator: (value) {
+                    if (value == null ||
+                        value.trim().isEmpty) {
+                      return 'Please enter a task title.';
+                    }
 
-              const SizedBox(height: 18),
-
-              
-              // Description Field
-              const Text("Description"),
-
-              const SizedBox(height: 8),
-
-              TextFormField(
-                controller: descriptionController,
-                maxLines: 4,
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    return null;
+                  },
+                  decoration: _inputDecoration(),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Description',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-              ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: descriptionController,
+                  enabled: !_isUpdating,
+                  maxLines: 4,
+                  validator: (value) {
+                    if (value == null ||
+                        value.trim().isEmpty) {
+                      return 'Please enter a task description.';
+                    }
 
-              const SizedBox(height: 18),
-
-             
-              // Category Dropdown
-              const Text("Category / Subject"),
-
-              const SizedBox(height: 8),
-
-              DropdownButtonFormField<String>(
-                value: selectedCategory,
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    return null;
+                  },
+                  decoration: _inputDecoration(),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Category / Subject',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                items: categories
-                    .map((e) => DropdownMenuItem(
-                          value: e,
-                          child: Text(e),
-                        ))
-                    .toList(),
-                onChanged: (value) {
-
-                  // Update the selected category.
-                  setState(() {
-                    selectedCategory = value!;
-                  });
-
-                },
-              ),
-
-              const SizedBox(height: 18),
-
-              
-              // Priority Buttons
-              const Text("Priority"),
-
-              const SizedBox(height: 10),
-
-              Row(
-                children: [
-                  priorityButton("Low"),
-                  const SizedBox(width: 10),
-                  priorityButton("Medium"),
-                  const SizedBox(width: 10),
-                  priorityButton("High"),
-                ],
-              ),
-
-              const SizedBox(height: 20),
-
-              
-              // Due Date Picker
-              const Text("Due Date"),
-
-              const SizedBox(height: 8),
-
-              TextFormField(
-                readOnly: true,
-                controller: TextEditingController(
-                  text: formatDate(selectedDate),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  value:
+                      categories.contains(selectedCategory)
+                          ? selectedCategory
+                          : null,
+                  hint: const Text(
+                    'Select category',
+                  ),
+                  decoration: _inputDecoration(),
+                  items: categories
+                      .toSet()
+                      .map(
+                        (category) =>
+                            DropdownMenuItem<String>(
+                          value: category,
+                          child: Text(category),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: _isUpdating
+                      ? null
+                      : (value) {
+                          setState(() {
+                            selectedCategory = value;
+                          });
+                        },
                 ),
-                decoration: InputDecoration(
-                  suffixIcon: const Icon(Icons.calendar_today),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
+                const SizedBox(height: 18),
+                const Text(
+                  'Priority',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-
-                // Open the date picker when tapped.
-                onTap: pickDate,
-              ),
-
-              const SizedBox(height: 20),
-
-              
-              // Reminder Dropdown
-              const Text("Remind Me"),
-
-              const SizedBox(height: 8),
-
-              DropdownButtonFormField<String>(
-                value: reminder,
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    _priorityButton('Low'),
+                    const SizedBox(width: 10),
+                    _priorityButton('Medium'),
+                    const SizedBox(width: 10),
+                    _priorityButton('High'),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Due Date & Time',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                items: reminders
-                    .map(
-                      (e) => DropdownMenuItem(
-                        value: e,
-                        child: Text(e),
+                const SizedBox(height: 8),
+                GestureDetector(
+                  onTap:
+                      _isUpdating ? null : _pickDateTime,
+                  child: AbsorbPointer(
+                    child: TextFormField(
+                      controller: TextEditingController(
+                        text: _formatDateTime(
+                          selectedDateTime,
+                        ),
                       ),
-                    )
-                    .toList(),
-                onChanged: (value) {
-
-                  // Update the selected reminder.
-                  setState(() {
-                    reminder = value!;
-                  });
-
-                },
-              ),
-
-              const SizedBox(height: 35),
-
-            
-              // Update Task Button
-              // Saves the edited task to Firestore.
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xff4F46E5),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(10),
+                      decoration:
+                          _inputDecoration().copyWith(
+                        suffixIcon: const Icon(
+                          Icons.calendar_today,
+                        ),
+                      ),
                     ),
                   ),
-                  onPressed: updateTask,
-                  child: const Text(
-                    "Update Task",
-                    style: TextStyle(fontSize: 16),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Remind Me',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  value:
+                      reminders.contains(selectedReminder)
+                          ? selectedReminder
+                          : 'No reminder',
+                  decoration: _inputDecoration(),
+                  items: reminders
+                      .toSet()
+                      .map(
+                        (reminder) =>
+                            DropdownMenuItem<String>(
+                          value: reminder,
+                          child: Text(reminder),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: _isUpdating
+                      ? null
+                      : (value) {
+                          if (value == null) {
+                            return;
+                          }
+
+                          setState(() {
+                            selectedReminder = value;
+                          });
+                        },
+                ),
+                const SizedBox(height: 35),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed:
+                        _isUpdating ? null : _updateTask,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor:
+                          const Color(0xff4F46E5),
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor:
+                          const Color(0xffA5A1F5),
+                      disabledForegroundColor:
+                          Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: _isUpdating
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child:
+                                CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text(
+                            'Update Task',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight:
+                                  FontWeight.bold,
+                            ),
+                          ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
