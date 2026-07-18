@@ -130,6 +130,115 @@ class TaskDetailScreen extends StatelessWidget {
     }
   }
 
+  Future<void> _changeTaskBackToPending(
+    BuildContext context,
+  ) async {
+    final dynamic dueDateData = taskData['dueDate'];
+
+    DateTime? taskDueDate;
+
+    if (dueDateData is Timestamp) {
+      taskDueDate = dueDateData.toDate();
+    } else if (dueDateData is DateTime) {
+      taskDueDate = dueDateData;
+    } else if (dueDateData is String) {
+      taskDueDate = DateTime.tryParse(dueDateData);
+    }
+
+    // Do not allow a completed task to return to Pending
+    // when its due date and time have already passed.
+    if (taskDueDate == null ||
+        !taskDueDate.isAfter(DateTime.now())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'This task cannot be changed to pending because '
+            'its due date and time have passed.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final bool? shouldChange = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Change Status'),
+          content: const Text(
+            'Change this completed task back to pending?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, true);
+              },
+              child: const Text('Change to Pending'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldChange != true) {
+      return;
+    }
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('tasks')
+          .doc(taskId)
+          .update({
+        'status': 'Pending',
+        'completedAt': FieldValue.delete(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (!context.mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Task status changed to pending.'),
+        ),
+      );
+
+      Navigator.pop(context);
+    } on FirebaseException catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error.message ??
+                'Unable to change the task status.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Unable to change the task status.',
+          ),
+        ),
+      );
+    }
+  }
+
   Future<void> _deleteTask(
     BuildContext context,
   ) async {
@@ -228,6 +337,22 @@ class TaskDetailScreen extends StatelessWidget {
 
     final bool isCompleted =
         status.trim().toLowerCase() == 'completed';
+
+    final dynamic rawDueDate = taskData['dueDate'];
+
+    DateTime? dueDateValue;
+
+    if (rawDueDate is Timestamp) {
+      dueDateValue = rawDueDate.toDate();
+    } else if (rawDueDate is DateTime) {
+      dueDateValue = rawDueDate;
+    } else if (rawDueDate is String) {
+      dueDateValue = DateTime.tryParse(rawDueDate);
+    }
+
+    final bool canChangeBackToPending =
+        dueDateValue != null &&
+        dueDateValue.isAfter(DateTime.now());
 
     return Scaffold(
       backgroundColor: const Color(0xffF6F7FB),
@@ -367,7 +492,7 @@ class TaskDetailScreen extends StatelessWidget {
                 ),
               ),
 
-            if (isCompleted)
+            if (isCompleted) ...[
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(
@@ -398,6 +523,37 @@ class TaskDetailScreen extends StatelessWidget {
                   ],
                 ),
               ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: OutlinedButton.icon(
+                  onPressed: canChangeBackToPending
+                      ? () {
+                          _changeTaskBackToPending(context);
+                        }
+                      : null,
+                  icon: const Icon(Icons.undo),
+                  label: Text(
+                    canChangeBackToPending
+                        ? 'Change Status to Pending'
+                        : 'Due Date Has Passed',
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.orange,
+                    disabledForegroundColor: Colors.grey,
+                    side: BorderSide(
+                      color: canChangeBackToPending
+                          ? Colors.orange
+                          : Colors.grey,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ),
+            ],
 
             const SizedBox(height: 15),
 

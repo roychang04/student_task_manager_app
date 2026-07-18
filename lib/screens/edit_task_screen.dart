@@ -251,6 +251,7 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
         'dueDate': Timestamp.fromDate(
           selectedDateTime,
         ),
+        'status': 'Pending',
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
