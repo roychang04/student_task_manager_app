@@ -35,6 +35,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
   DateTime _now = DateTime.now();
 
   bool notificationsEnabled = true;
+  String defaultSorting = 'Due Date';
 
   final List<String> filters = [
     'All',
@@ -43,7 +44,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
     'Overdue',
   ];
 
-  void _listenToNotificationSetting() {
+  void _listenToUserSettings() {
     final user = _authService.currentUser;
 
     if (user == null) {
@@ -61,9 +62,21 @@ class _TaskListScreenState extends State<TaskListScreen> {
 
       final data = snapshot.data();
 
+      final loadedSorting =
+          data?['defaultTaskSorting']?.toString() ?? 'Due Date';
+
       setState(() {
         notificationsEnabled =
             data?['notificationsEnabled'] as bool? ?? true;
+
+        defaultSorting = [
+          'Due Date',
+          'Priority',
+          'Status',
+          'Category',
+        ].contains(loadedSorting)
+            ? loadedSorting
+            : 'Due Date';
       });
     });
   }
@@ -82,7 +95,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
         )
         .snapshots();
 
-    _listenToNotificationSetting();
+    _listenToUserSettings();
 
     _scheduleNextMinuteUpdate();
   }
@@ -346,7 +359,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
     if (!notificationsEnabled) {
       return false;
     }
-    
+
     final String status =
       _currentStatus(taskData).toLowerCase();
 
@@ -413,56 +426,119 @@ class _TaskListScreenState extends State<TaskListScreen> {
     return DateTime.fromMillisecondsSinceEpoch(0);
   }
 
+  int _priorityRank(String priority) {
+    switch (priority.trim().toLowerCase()) {
+      case 'high':
+        return 0;
+      case 'medium':
+        return 1;
+      case 'low':
+        return 2;
+      default:
+        return 3;
+    }
+  }
+
+  int _statusRank(String status) {
+    switch (status.trim().toLowerCase()) {
+      case 'overdue':
+        return 0;
+      case 'pending':
+        return 1;
+      case 'completed':
+        return 2;
+      default:
+        return 3;
+    }
+  }
+
+  DateTime _dueDateValue(
+    QueryDocumentSnapshot<Map<String, dynamic>> document,
+  ) {
+    return _convertDueDate(document.data()['dueDate']) ??
+        DateTime(9999);
+  }
+
   void _sortTasks(
-    List<
-            QueryDocumentSnapshot<
-                Map<String, dynamic>>>
-        documents,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> documents,
   ) {
     documents.sort((first, second) {
+      final firstData = first.data();
+      final secondData = second.data();
+
       final bool firstHasReminder =
-          _isReminderActive(first.data());
+          _isReminderActive(firstData);
 
       final bool secondHasReminder =
-          _isReminderActive(second.data());
+          _isReminderActive(secondData);
 
-      // Active reminder tasks appear first.
-      if (firstHasReminder &&
-          !secondHasReminder) {
+      // Keep active reminder tasks at the top.
+      if (firstHasReminder && !secondHasReminder) {
         return -1;
       }
 
-      if (!firstHasReminder &&
-          secondHasReminder) {
+      if (!firstHasReminder && secondHasReminder) {
         return 1;
       }
 
-      // When both have active reminders,
-      // show the nearest due task first.
-      if (firstHasReminder &&
-          secondHasReminder) {
-        final DateTime? firstDueDate =
-            _convertDueDate(
-          first.data()['dueDate'],
-        );
+      // After reminder priority, follow user's default sorting.
+      switch (defaultSorting) {
+        case 'Priority':
+          final firstPriority =
+              _priorityRank(firstData['priority']?.toString() ?? 'Low');
 
-        final DateTime? secondDueDate =
-            _convertDueDate(
-          second.data()['dueDate'],
-        );
+          final secondPriority =
+              _priorityRank(secondData['priority']?.toString() ?? 'Low');
 
-        if (firstDueDate != null &&
-            secondDueDate != null) {
-          return firstDueDate.compareTo(
-            secondDueDate,
+          if (firstPriority != secondPriority) {
+            return firstPriority.compareTo(secondPriority);
+          }
+
+          return _dueDateValue(first).compareTo(
+            _dueDateValue(second),
           );
-        }
-      }
 
-      // Other tasks remain ordered by newest first.
-      return _createdAtValue(second).compareTo(
-        _createdAtValue(first),
-      );
+        case 'Status':
+          final firstStatus = _statusRank(
+            _currentStatus(firstData),
+          );
+
+          final secondStatus = _statusRank(
+            _currentStatus(secondData),
+          );
+
+          if (firstStatus != secondStatus) {
+            return firstStatus.compareTo(secondStatus);
+          }
+
+          return _dueDateValue(first).compareTo(
+            _dueDateValue(second),
+          );
+
+        case 'Category':
+          final firstCategory =
+              firstData['category']?.toString().toLowerCase() ?? '';
+
+          final secondCategory =
+              secondData['category']?.toString().toLowerCase() ?? '';
+
+          final categoryCompare =
+              firstCategory.compareTo(secondCategory);
+
+          if (categoryCompare != 0) {
+            return categoryCompare;
+          }
+
+          return _dueDateValue(first).compareTo(
+            _dueDateValue(second),
+          );
+
+        case 'Due Date':
+        default:
+          return _dueDateValue(first).compareTo(
+            _dueDateValue(second),
+          );
+      }
     });
   }
 
@@ -483,67 +559,6 @@ class _TaskListScreenState extends State<TaskListScreen> {
         '${_monthName(date.month)} '
         '${date.year}, '
         '$hour:$minute $period';
-  }
-
-  Future<void> _checkOverdueTasks() async {
-    try {
-      final snapshot =
-          await FirebaseFirestore.instance
-              .collection('tasks')
-              .where(
-                'status',
-                isEqualTo: 'Pending',
-              )
-              .get();
-
-      final DateTime now = DateTime.now();
-
-      final WriteBatch batch =
-          FirebaseFirestore.instance.batch();
-
-      bool hasUpdates = false;
-
-      for (final document in snapshot.docs) {
-        final data = document.data();
-
-        final DateTime? dueDate =
-            _convertDueDate(
-          data['dueDate'],
-        );
-
-        if (dueDate != null &&
-            now.isAfter(dueDate)) {
-          batch.update(
-            document.reference,
-            {
-              'status': 'Overdue',
-            },
-          );
-
-          hasUpdates = true;
-        }
-      }
-
-      if (hasUpdates) {
-        await batch.commit();
-      }
-    } catch (error) {
-      debugPrint(
-        'Error checking overdue tasks: $error',
-      );
-
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Unable to check overdue tasks',
-          ),
-        ),
-      );
-    }
   }
 
   Future<void> _refreshTaskTimes() async {
