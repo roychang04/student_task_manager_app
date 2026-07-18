@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class StudentBottomNavBar extends StatelessWidget {
   final int currentIndex;
@@ -16,73 +17,97 @@ class StudentBottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('tasks')
-          .snapshots(),
-      builder: (context, snapshot) {
-        int reminderCount = 0;
+    final user = FirebaseAuth.instance.currentUser;
 
-        if (snapshot.hasData) {
-          reminderCount = _calculateReminderCount(
-            snapshot.data!.docs,
-          );
-        }
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: user == null
+          ? null
+          : FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .snapshots(),
+      builder: (context, userSnapshot) {
+        final userData = userSnapshot.data?.data();
 
-        return Container(
-          height: 70,
-          padding: const EdgeInsets.symmetric(
-            horizontal: 8,
-            vertical: 6,
-          ),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border(
-              top: BorderSide(
-                color: Colors.grey.shade200,
-                width: 1,
+        final bool notificationsEnabled =
+            userData?['notificationsEnabled'] as bool? ?? true;
+
+        return StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('tasks')
+              .snapshots(),
+          builder: (context, snapshot) {
+            int reminderCount = 0;
+
+            if (snapshot.hasData) {
+              reminderCount = _calculateReminderCount(
+                snapshot.data!.docs,
+                notificationsEnabled: notificationsEnabled,
+              );
+            }
+
+            return Container(
+              height: 70,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 6,
               ),
-            ),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _navItem(
-                icon: Icons.home_rounded,
-                label: 'Home',
-                index: 0,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border(
+                  top: BorderSide(
+                    color: Colors.grey.shade200,
+                    width: 1,
+                  ),
+                ),
               ),
-              _navItem(
-                icon: Icons.task_alt_rounded,
-                label: 'Tasks',
-                index: 1,
-                notificationCount: reminderCount,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _navItem(
+                    icon: Icons.home_rounded,
+                    label: 'Home',
+                    index: 0,
+                  ),
+                  _navItem(
+                    icon: Icons.task_alt_rounded,
+                    label: 'Tasks',
+                    index: 1,
+                    notificationCount: reminderCount,
+                  ),
+                  _navItem(
+                    icon: Icons.calendar_month_rounded,
+                    label: 'Calendar',
+                    index: 2,
+                  ),
+                  _navItem(
+                    icon: Icons.category_rounded,
+                    label: 'Categories',
+                    index: 3,
+                  ),
+                  _navItem(
+                    icon: Icons.person_outline_rounded,
+                    label: 'Profile',
+                    index: 4,
+                  ),
+                ],
               ),
-              _navItem(
-                icon: Icons.calendar_month_rounded,
-                label: 'Calendar',
-                index: 2,
-              ),
-              _navItem(
-                icon: Icons.category_rounded,
-                label: 'Categories',
-                index: 3,
-              ),
-              _navItem(
-                icon: Icons.person_outline_rounded,
-                label: 'Profile',
-                index: 4,
-              ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
   }
 
   int _calculateReminderCount(
-    List<QueryDocumentSnapshot> documents,
+    List<QueryDocumentSnapshot> documents, {
+    required bool notificationsEnabled,
+    }
   ) {
+    if (!notificationsEnabled) {
+      return 0;
+    }
+    
     int count = 0;
     final DateTime now = DateTime.now();
 

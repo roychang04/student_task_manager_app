@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../services/auth_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
@@ -7,7 +8,12 @@ import 'add_task_screen.dart';
 import 'task_detail_screen.dart';
 
 class TaskListScreen extends StatefulWidget {
-  const TaskListScreen({super.key});
+  final String initialFilter;
+
+  const TaskListScreen({
+    super.key,
+    this.initialFilter = 'All',
+  });
 
   @override
   State<TaskListScreen> createState() =>
@@ -15,10 +21,20 @@ class TaskListScreen extends StatefulWidget {
 }
 
 class _TaskListScreenState extends State<TaskListScreen> {
-  String selectedFilter = 'All';
+  final AuthService _authService = AuthService();
+
+  late String selectedFilter;
   String searchQuery = '';
 
-  Timer? _reminderRefreshTimer;
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _tasksStream;
+
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+    _settingsSubscription;
+
+  Timer? _minuteRefreshTimer;
+  DateTime _now = DateTime.now();
+
+  bool notificationsEnabled = true;
 
   final List<String> filters = [
     'All',
@@ -27,29 +43,91 @@ class _TaskListScreenState extends State<TaskListScreen> {
     'Overdue',
   ];
 
+  void _listenToNotificationSetting() {
+    final user = _authService.currentUser;
+
+    if (user == null) {
+      return;
+    }
+
+    _settingsSubscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .snapshots()
+        .listen((snapshot) {
+      if (!mounted) {
+        return;
+      }
+
+      final data = snapshot.data();
+
+      setState(() {
+        notificationsEnabled =
+            data?['notificationsEnabled'] as bool? ?? true;
+      });
+    });
+  }
+
   @override
   void initState() {
     super.initState();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkOverdueTasks();
-    });
+    selectedFilter = widget.initialFilter;
 
-    // Refresh the task list regularly so that a task
-    // becomes highlighted when its reminder time arrives.
-    _reminderRefreshTimer = Timer.periodic(
-      const Duration(seconds: 30),
-      (_) {
-        if (mounted) {
-          setState(() {});
-        }
-      },
+    _tasksStream = FirebaseFirestore.instance
+        .collection('tasks')
+        .orderBy(
+          'createdAt',
+          descending: true,
+        )
+        .snapshots();
+
+    _listenToNotificationSetting();
+
+    _scheduleNextMinuteUpdate();
+  }
+
+  void _scheduleNextMinuteUpdate() {
+    _minuteRefreshTimer?.cancel();
+
+    final now = DateTime.now();
+
+    final nextMinute = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      now.hour,
+      now.minute + 1,
     );
+
+    final delay = nextMinute.difference(now);
+
+    _minuteRefreshTimer = Timer(delay, () {
+      if (!mounted) return;
+
+      setState(() {
+        _now = DateTime.now();
+      });
+
+      _scheduleNextMinuteUpdate();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant TaskListScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.initialFilter != widget.initialFilter) {
+      selectedFilter = widget.initialFilter;
+      searchQuery = '';
+      _now = DateTime.now();
+    }
   }
 
   @override
   void dispose() {
-    _reminderRefreshTimer?.cancel();
+    _minuteRefreshTimer?.cancel();
+    _settingsSubscription?.cancel();
     super.dispose();
   }
 
@@ -216,6 +294,27 @@ class _TaskListScreenState extends State<TaskListScreen> {
     return null;
   }
 
+  String _currentStatus(Map<String, dynamic> data) {
+    final String storedStatus =
+        data['status']?.toString() ?? 'Pending';
+
+    if (storedStatus == 'Completed') {
+      return 'Completed';
+    }
+
+    final DateTime? dueDate = _convertDueDate(
+      data['dueDate'],
+    );
+
+    if (dueDate != null &&
+        (_now.isAfter(dueDate) ||
+            _now.isAtSameMomentAs(dueDate))) {
+      return 'Overdue';
+    }
+
+    return 'Pending';
+  }
+
   DateTime? _getReminderTime({
     required DateTime dueDate,
     required String reminder,
@@ -244,12 +343,12 @@ class _TaskListScreenState extends State<TaskListScreen> {
   bool _isReminderActive(
     Map<String, dynamic> taskData,
   ) {
+    if (!notificationsEnabled) {
+      return false;
+    }
+    
     final String status =
-        taskData['status']
-                ?.toString()
-                .trim()
-                .toLowerCase() ??
-            'pending';
+      _currentStatus(taskData).toLowerCase();
 
     final String reminder =
         taskData['reminder']
@@ -287,10 +386,8 @@ class _TaskListScreenState extends State<TaskListScreen> {
       return false;
     }
 
-    final DateTime now = DateTime.now();
-
-    return now.isAtSameMomentAs(reminderTime) ||
-        now.isAfter(reminderTime);
+    return _now.isAtSameMomentAs(reminderTime) ||
+      _now.isAfter(reminderTime);
   }
 
   DateTime _createdAtValue(
@@ -449,6 +546,14 @@ class _TaskListScreenState extends State<TaskListScreen> {
     }
   }
 
+  Future<void> _refreshTaskTimes() async {
+    if (!mounted) return;
+
+    setState(() {
+      _now = DateTime.now();
+    });
+  }
+
   Future<void> _openTaskDetails({
     required String taskId,
     required Map<String, dynamic> taskData,
@@ -463,23 +568,15 @@ class _TaskListScreenState extends State<TaskListScreen> {
       ),
     );
 
-    await _checkOverdueTasks();
-
     if (mounted) {
-      setState(() {});
+      setState(() {
+        _now = DateTime.now();
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final Query<Map<String, dynamic>> query =
-        FirebaseFirestore.instance
-            .collection('tasks')
-            .orderBy(
-              'createdAt',
-              descending: true,
-            );
-
     return Scaffold(
       backgroundColor:
           const Color(0xffF6F7FB),
@@ -575,7 +672,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
               child: StreamBuilder<
                   QuerySnapshot<
                       Map<String, dynamic>>>(
-                stream: query.snapshots(),
+                stream: _tasksStream,
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
                     return Center(
@@ -612,10 +709,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
                                   .toLowerCase() ??
                               '';
 
-                      final String status =
-                          data['status']
-                                  ?.toString() ??
-                              'Pending';
+                      final String status = _currentStatus(data);
 
                       final bool matchesStatus =
                           selectedFilter == 'All' ||
@@ -640,8 +734,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
 
                   if (documents.isEmpty) {
                     return RefreshIndicator(
-                      onRefresh:
-                          _checkOverdueTasks,
+                      onRefresh: _refreshTaskTimes,
                       child: ListView(
                         physics:
                             const AlwaysScrollableScrollPhysics(),
@@ -658,7 +751,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
                   }
 
                   return RefreshIndicator(
-                    onRefresh: _checkOverdueTasks,
+                    onRefresh: _refreshTaskTimes,
                     child: ListView.builder(
                       physics:
                           const AlwaysScrollableScrollPhysics(),
@@ -687,10 +780,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
                                     ?.toString() ??
                                 'Low';
 
-                        final String status =
-                            data['status']
-                                    ?.toString() ??
-                                'Pending';
+                        final String status = _currentStatus(data);
 
                         final bool
                             hasActiveReminder =
@@ -723,9 +813,11 @@ class _TaskListScreenState extends State<TaskListScreen> {
                           child: GestureDetector(
                             onTap: () {
                               _openTaskDetails(
-                                taskId:
-                                    document.id,
-                                taskData: data,
+                                taskId: document.id,
+                                taskData: {
+                                  ...data,
+                                  'status': _currentStatus(data),
+                                },
                               );
                             },
                             child: Container(
@@ -924,11 +1016,11 @@ class _TaskListScreenState extends State<TaskListScreen> {
                                           ),
                                           onPressed: () {
                                             _openTaskDetails(
-                                              taskId:
-                                                  document
-                                                      .id,
-                                              taskData:
-                                                  data,
+                                              taskId: document.id,
+                                              taskData: {
+                                                ...data,
+                                                'status': _currentStatus(data),
+                                              },
                                             );
                                           },
                                         ),
@@ -1067,10 +1159,10 @@ class _TaskListScreenState extends State<TaskListScreen> {
             ),
           );
 
-          await _checkOverdueTasks();
-
           if (mounted) {
-            setState(() {});
+            setState(() {
+              _now = DateTime.now();
+            });
           }
         },
         child: const Icon(Icons.add),
