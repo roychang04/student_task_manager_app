@@ -63,7 +63,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     _userSubscription = FirebaseFirestore.instance
-        .collection('users')
+        .collection('userdata')
         .doc(user.uid)
         .snapshots()
         .listen((snapshot) {
@@ -78,14 +78,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
 
       final loadedSorting =
-          data['defaultTaskSorting']?.toString() ?? 'Due Date';
+          data['sorting']?.toString() ?? 'Due Date';
 
       setState(() {
         username = data['username']?.toString() ?? 'User';
         email = data['email']?.toString() ?? user.email ?? '';
 
         notificationsEnabled =
-            data['notificationsEnabled'] as bool? ?? true;
+            data['notification'] as bool? ?? true;
 
         defaultSorting = sortingOptions.contains(loadedSorting)
             ? loadedSorting
@@ -104,7 +104,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     await FirebaseFirestore.instance
-        .collection('users')
+        .collection('userdata')
         .doc(user.uid)
         .set(
       {
@@ -543,7 +543,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                 try {
                   await _updateUserData({
-                    'notificationsEnabled': value,
+                    'notification': value,
                   });
                 } catch (error) {
                   if (!mounted) return;
@@ -648,7 +648,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             try {
               await _updateUserData({
-                'defaultTaskSorting': value,
+                'sorting': value,
               });
             } catch (error) {
               if (!mounted) return;

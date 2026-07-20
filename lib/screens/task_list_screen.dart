@@ -52,7 +52,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
     }
 
     _settingsSubscription = FirebaseFirestore.instance
-        .collection('users')
+        .collection('userdata')
         .doc(user.uid)
         .snapshots()
         .listen((snapshot) {

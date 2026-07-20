@@ -45,7 +45,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     _userSubscription = FirebaseFirestore.instance
-        .collection('users')
+        .collection('userdata')
         .doc(userId)
         .snapshots()
         .listen((snapshot) {

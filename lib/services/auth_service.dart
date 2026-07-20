@@ -37,9 +37,10 @@ class AuthService {
       throw Exception('Unable to create user');
     }
 
-    await _firestore.collection('users').doc(user.uid).set({
+    await _firestore.collection('userdata').doc(user.uid).set({
       'username': username,
       'email': email,
+      'uid': user.uid,
       'notificationsEnabled': true,
       'defaultTaskSorting': 'Due Date',
       'createdAt': FieldValue.serverTimestamp(),

@@ -23,7 +23,7 @@ class StudentBottomNavBar extends StatelessWidget {
       stream: user == null
           ? null
           : FirebaseFirestore.instance
-              .collection('users')
+              .collection('userdata')
               .doc(user.uid)
               .snapshots(),
       builder: (context, userSnapshot) {
