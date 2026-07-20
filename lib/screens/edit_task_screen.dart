@@ -18,6 +18,9 @@ class EditTaskScreen extends StatefulWidget {
 
 class _EditTaskScreenState extends State<EditTaskScreen> {
   final _formKey = GlobalKey<FormState>();
+  final CollectionReference<Map<String, dynamic>>
+    _categoryCollection =
+    FirebaseFirestore.instance.collection('categories');
 
   late final TextEditingController titleController;
   late final TextEditingController descriptionController;
@@ -29,15 +32,6 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
   DateTime selectedDateTime = DateTime.now();
 
   bool _isUpdating = false;
-
-  // Must match AddTaskScreen exactly.
-  final List<String> categories = [
-    'Assignment',
-    'Quiz',
-    'Project',
-    'Homework',
-    'Exam',
-  ];
 
   // Must match AddTaskScreen exactly.
   final List<String> reminders = [
@@ -62,9 +56,8 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
     final String savedCategory =
         widget.taskData['category']?.toString().trim() ?? '';
 
-    selectedCategory = categories.contains(savedCategory)
-        ? savedCategory
-        : null;
+    selectedCategory =
+      savedCategory.isEmpty ? null : savedCategory;
 
     final String savedPriority =
         widget.taskData['priority']?.toString().trim() ?? 'Low';
@@ -444,32 +437,76 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  value:
-                      categories.contains(selectedCategory)
-                          ? selectedCategory
-                          : null,
-                  hint: const Text(
-                    'Select category',
-                  ),
-                  decoration: _inputDecoration(),
-                  items: categories
-                      .toSet()
-                      .map(
-                        (category) =>
-                            DropdownMenuItem<String>(
+                StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: _categoryCollection
+                      .orderBy('createdAt')
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return const Text(
+                        'Unable to load categories.',
+                        style: TextStyle(color: Colors.red),
+                      );
+                    }
+
+                    if (snapshot.connectionState ==
+                        ConnectionState.waiting) {
+                      return const LinearProgressIndicator();
+                    }
+
+                    final List<String> categoryNames =
+                        snapshot.data?.docs
+                                .map(
+                                  (document) =>
+                                      document.data()['name']?.toString().trim() ??
+                                      '',
+                                )
+                                .where((name) => name.isNotEmpty)
+                                .toList() ??
+                            [];
+
+                    final String? currentCategory =
+                        selectedCategory;
+
+                    /*
+                    * Older tasks may still contain hardcoded category
+                    * values such as Quiz or Assignment. I included the saved
+                    * value temporarily so the edit screen can display it.
+                    */
+                    if (currentCategory != null &&
+                        currentCategory.isNotEmpty &&
+                        !categoryNames.contains(currentCategory)) {
+                      categoryNames.insert(0, currentCategory);
+                    }
+
+                    final String? validSelectedCategory =
+                        categoryNames.contains(selectedCategory)
+                            ? selectedCategory
+                            : null;
+
+                    return DropdownButtonFormField<String>(
+                      value: validSelectedCategory,
+                      hint: Text(
+                        categoryNames.isEmpty
+                            ? 'No categories available'
+                            : 'Select category',
+                      ),
+                      decoration: _inputDecoration(),
+                      items: categoryNames.map((category) {
+                        return DropdownMenuItem<String>(
                           value: category,
                           child: Text(category),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: _isUpdating
-                      ? null
-                      : (value) {
-                          setState(() {
-                            selectedCategory = value;
-                          });
-                        },
+                        );
+                      }).toList(),
+                      onChanged: _isUpdating || categoryNames.isEmpty
+                          ? null
+                          : (value) {
+                              setState(() {
+                                selectedCategory = value;
+                              });
+                            },
+                    );
+                  },
                 ),
                 const SizedBox(height: 18),
                 const Text(
