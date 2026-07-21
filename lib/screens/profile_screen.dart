@@ -25,7 +25,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String email = '';
 
   bool notificationsEnabled = true;
-  String defaultSorting = 'Due Date';
+  String defaultTaskSorting = 'Due Date';
 
   final List<String> sortingOptions = [
     'Due Date',
@@ -78,16 +78,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
 
       final loadedSorting =
-          data['sorting']?.toString() ?? 'Due Date';
+          data['defaultTaskSorting']?.toString() ?? 'Due Date';
 
       setState(() {
         username = data['username']?.toString() ?? 'User';
         email = data['email']?.toString() ?? user.email ?? '';
 
         notificationsEnabled =
-            data['notification'] as bool? ?? true;
+            data['notificationsEnabled'] as bool? ?? true;
 
-        defaultSorting = sortingOptions.contains(loadedSorting)
+        defaultTaskSorting = sortingOptions.contains(loadedSorting)
             ? loadedSorting
             : 'Due Date';
       });
@@ -451,7 +451,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -461,7 +461,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         children: [
           CircleAvatar(
             radius: 34,
-            backgroundColor: primaryColour.withOpacity(0.15),
+            backgroundColor: primaryColour.withValues(alpha: 0.15),
             child: Text(
               profileLetter,
               style: const TextStyle(
@@ -511,7 +511,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -533,7 +533,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             trailing: Switch(
               value: notificationsEnabled,
-              activeColor: primaryColour,
+              activeThumbColor: primaryColour,
+              activeTrackColor: primaryColour.withValues(alpha: 0.35),
               onChanged: (value) async {
                 final oldValue = notificationsEnabled;
 
@@ -543,7 +544,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                 try {
                   await _updateUserData({
-                    'notification': value,
+                    'notificationsEnabled': value,
                   });
                 } catch (error) {
                   if (!mounted) return;
@@ -622,7 +623,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       trailing: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
-          value: defaultSorting,
+          value: defaultTaskSorting,
           borderRadius: BorderRadius.circular(12),
           items: sortingOptions.map((option) {
             return DropdownMenuItem<String>(
@@ -640,21 +641,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
               return;
             }
 
-            final oldValue = defaultSorting;
+            final oldValue = defaultTaskSorting;
 
             setState(() {
-              defaultSorting = value;
+              defaultTaskSorting = value;
             });
 
             try {
               await _updateUserData({
-                'sorting': value,
+                'defaultTaskSorting': value,
               });
             } catch (error) {
               if (!mounted) return;
 
               setState(() {
-                defaultSorting = oldValue;
+                defaultTaskSorting = oldValue;
               });
 
               _showMessage('Unable to update default sorting');

@@ -382,7 +382,7 @@ class TaskDetailScreen extends StatelessWidget {
                 vertical: 6,
               ),
               decoration: BoxDecoration(
-                color: statusColor(status).withOpacity(0.15),
+                color: statusColor(status).withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
@@ -499,7 +499,7 @@ class TaskDetailScreen extends StatelessWidget {
                   vertical: 14,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.12),
+                  color: Colors.green.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: Colors.green,
