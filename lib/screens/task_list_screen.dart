@@ -403,28 +403,28 @@ class _TaskListScreenState extends State<TaskListScreen> {
       _now.isAfter(reminderTime);
   }
 
-  DateTime _createdAtValue(
-    QueryDocumentSnapshot<Map<String, dynamic>>
-        document,
-  ) {
-    final dynamic createdAt =
-        document.data()['createdAt'];
+  // DateTime _createdAtValue(
+  //   QueryDocumentSnapshot<Map<String, dynamic>>
+  //       document,
+  // ) {
+  //   final dynamic createdAt =
+  //       document.data()['createdAt'];
 
-    if (createdAt is Timestamp) {
-      return createdAt.toDate();
-    }
+  //   if (createdAt is Timestamp) {
+  //     return createdAt.toDate();
+  //   }
 
-    if (createdAt is DateTime) {
-      return createdAt;
-    }
+  //   if (createdAt is DateTime) {
+  //     return createdAt;
+  //   }
 
-    if (createdAt is String) {
-      return DateTime.tryParse(createdAt) ??
-          DateTime.fromMillisecondsSinceEpoch(0);
-    }
+  //   if (createdAt is String) {
+  //     return DateTime.tryParse(createdAt) ??
+  //         DateTime.fromMillisecondsSinceEpoch(0);
+  //   }
 
-    return DateTime.fromMillisecondsSinceEpoch(0);
-  }
+  //   return DateTime.fromMillisecondsSinceEpoch(0);
+  // }
 
   int _priorityRank(String priority) {
     switch (priority.trim().toLowerCase()) {
@@ -880,13 +880,13 @@ class _TaskListScreenState extends State<TaskListScreen> {
                                         hasActiveReminder
                                             ? const Color(
                                                 0xff4F46E5,
-                                              ).withOpacity(
-                                                0.20,
+                                              ).withValues(
+                                                alpha: 0.20,
                                               )
                                             : Colors
                                                 .black
-                                                .withOpacity(
-                                                  0.05,
+                                                .withValues(
+                                                  alpha: 0.05,
                                                 ),
                                     blurRadius:
                                         hasActiveReminder
@@ -1120,8 +1120,8 @@ class _TaskListScreenState extends State<TaskListScreen> {
                                           color:
                                               _statusColor(
                                             status,
-                                          ).withOpacity(
-                                            0.15,
+                                          ).withValues(
+                                            alpha: 0.15,
                                           ),
                                           borderRadius:
                                               BorderRadius

@@ -243,7 +243,7 @@ if (selectedDate == null || selectedTime == null) {
           margin: const EdgeInsets.only(right: 8),
           decoration: BoxDecoration(
             color: isSelected
-                ? color.withOpacity(0.18)
+                ? color.withValues(alpha: 0.18)
                 : Colors.white,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
@@ -335,7 +335,7 @@ if (selectedDate == null || selectedTime == null) {
 
               _inputLabel('Category / Subject'),
               DropdownButtonFormField<String>(
-                value: selectedCategory,
+                initialValue: selectedCategory,
                 hint: const Text('Select category'),
                 decoration: _inputDecoration(''),
                 items: categories.map((category) {
@@ -396,7 +396,7 @@ if (selectedDate == null || selectedTime == null) {
 
               _inputLabel('Remind me'),
               DropdownButtonFormField<String>(
-                value: selectedReminder,
+                initialValue: selectedReminder,
                 decoration: _inputDecoration(''),
                 items: reminders.map((reminder) {
                   return DropdownMenuItem(
