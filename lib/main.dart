@@ -10,6 +10,7 @@ import 'widgets/student_bottom_nav_bar.dart';
 import 'screens/home_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/auth_wrapper.dart';
+
 import 'screens/category_screen.dart';
 
 Future<void> main() async {
@@ -86,7 +87,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         initialFilter: _taskListFilter,
       ),
       const CalendarPage(),
+
       CategoryScreen(),
+
       ProfileScreen(),
     ];
   }

@@ -317,7 +317,7 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
           decoration: BoxDecoration(
             color: isSelected
                 ? color
-                : color.withOpacity(0.12),
+                : color.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
               color: color,
@@ -494,6 +494,7 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
                       decoration: _inputDecoration(),
                       items: categoryNames.map((category) {
                         return DropdownMenuItem<String>(
+
                           value: category,
                           child: Text(category),
                         );
@@ -561,7 +562,7 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
-                  value:
+                  initialValue:
                       reminders.contains(selectedReminder)
                           ? selectedReminder
                           : 'No reminder',
