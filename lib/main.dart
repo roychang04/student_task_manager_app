@@ -7,6 +7,10 @@ import 'firebase_options.dart';
 import 'screens/calendar_screen.dart';
 import 'screens/task_list_screen.dart';
 import 'widgets/student_bottom_nav_bar.dart';
+import 'screens/home_screen.dart';
+import 'screens/profile_screen.dart';
+import 'screens/auth_wrapper.dart';
+import 'screens/category_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,7 +34,6 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      useInheritedMediaQuery: true,
       locale: DevicePreview.locale(context),
       builder: DevicePreview.appBuilder,
       title: 'Student Task Manager',
@@ -40,7 +43,7 @@ class MyApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: const DashboardScreen(),
+      home: const AuthWrapper(),
     );
   }
 }
@@ -56,25 +59,36 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   int _currentIndex = 0;
+  String _taskListFilter = 'All';
 
-  final List<Widget> _screens = const [
-    Center(
-      child: Text('Home Screen'),
-    ),
-    TaskListScreen(),
-    CalendarPage(),
-    Center(
-      child: Text('Categories Screen'),
-    ),
-    Center(
-      child: Text('Profile Screen'),
-    ),
-  ];
-
+  void _openTasksWithFilter(String filter) {
+    setState(() {
+      _taskListFilter = filter;
+      _currentIndex = 1;
+    });
+  }
+    
   void _changeScreen(int index) {
     setState(() {
       _currentIndex = index;
     });
+  }
+
+  List<Widget> get _screens {
+    return [
+      HomeScreen(
+        onViewTasksByStatus: _openTasksWithFilter,
+        onOpenProfile: () {
+          _changeScreen(4);
+        },
+      ),
+      TaskListScreen(
+        initialFilter: _taskListFilter,
+      ),
+      const CalendarPage(),
+      CategoryScreen(),
+      ProfileScreen(),
+    ];
   }
 
   @override

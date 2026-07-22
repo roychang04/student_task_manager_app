@@ -11,6 +11,9 @@ class AddTaskScreen extends StatefulWidget {
 class _AddTaskScreenState extends State<AddTaskScreen> {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
+  final CollectionReference<Map<String, dynamic>>
+    _categoryCollection =
+    FirebaseFirestore.instance.collection('categories');
 
   String? selectedCategory;
   String selectedPriority = 'Low';
@@ -20,14 +23,6 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   TimeOfDay? selectedTime;
 
   bool _isSaving = false;
-
-  final List<String> categories = [
-    'Assignment',
-    'Quiz',
-    'Project',
-    'Homework',
-    'Exam',
-  ];
 
   final List<String> reminders = [
     'No reminder',
@@ -113,7 +108,7 @@ if (selectedDate == null || selectedTime == null) {
   );
   return;
 }
-      
+
 
     final selectedDateTime = DateTime(
       selectedDate!.year,
@@ -334,23 +329,62 @@ if (selectedDate == null || selectedTime == null) {
               const SizedBox(height: 16),
 
               _inputLabel('Category / Subject'),
-              DropdownButtonFormField<String>(
-                value: selectedCategory,
-                hint: const Text('Select category'),
-                decoration: _inputDecoration(''),
-                items: categories.map((category) {
-                  return DropdownMenuItem(
-                    value: category,
-                    child: Text(category),
+              StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: _categoryCollection
+                    .orderBy('createdAt')
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return const Text(
+                      'Unable to load categories.',
+                      style: TextStyle(color: Colors.red),
+                    );
+                  }
+
+                  if (snapshot.connectionState ==
+                      ConnectionState.waiting) {
+                    return const LinearProgressIndicator();
+                  }
+
+                  final List<String> categoryNames =
+                      snapshot.data?.docs
+                              .map(
+                                (document) =>
+                                    document.data()['name']?.toString().trim() ??
+                                    '',
+                              )
+                              .where((name) => name.isNotEmpty)
+                              .toList() ??
+                          [];
+
+                  final String? validSelectedCategory =
+                      categoryNames.contains(selectedCategory)
+                          ? selectedCategory
+                          : null;
+
+                  return DropdownButtonFormField<String>(
+                    initialValue: validSelectedCategory,
+                    hint: Text(
+                      categoryNames.isEmpty
+                          ? 'No categories available'
+                          : 'Select category',
+                    ),
+                    decoration: _inputDecoration(''),
+                    items: categoryNames.map((category) {
+                      return DropdownMenuItem<String>(
+                        value: category,
+                        child: Text(category),
+                      );
+                    }).toList(),
+                    onChanged: _isSaving || categoryNames.isEmpty
+                        ? null
+                        : (value) {
+                            setState(() {
+                              selectedCategory = value;
+                            });
+                          },
                   );
-                }).toList(),
-                onChanged: _isSaving
-                    ? null
-                    : (value) {
-                        setState(() {
-                          selectedCategory = value;
-                        });
-                      },
+                },
               ),
 
               const SizedBox(height: 16),
