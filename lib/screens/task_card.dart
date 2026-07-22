@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:student_task_manager_app/models/task_model.dart';
 
-class TaskCard extends StatelessWidget {
+class TaskCardController {
   final TaskModel task;
 
-  const TaskCard({
-    super.key,
-    required this.task,
-  });
+  const TaskCardController(this.task);
 
-  Color get _priorityColor {
+  Color get priorityColor {
     switch (task.priority) {
       case 'High':
         return Colors.redAccent;
@@ -22,7 +19,7 @@ class TaskCard extends StatelessWidget {
     }
   }
 
-  Color get _statusColor {
+  Color get statusColor {
     switch (task.status) {
       case 'Completed':
         return Colors.green;
@@ -33,19 +30,31 @@ class TaskCard extends StatelessWidget {
     }
   }
 
-  String get _formattedTime {
-    final hour = task.dueDate.hour;
-    final minute = task.dueDate.minute;
+  String get formattedTime {
+    final int hour = task.dueDate.hour;
+    final int minute = task.dueDate.minute;
 
-    final period = hour >= 12 ? 'PM' : 'AM';
-    final hour12 = hour % 12 == 0 ? 12 : hour % 12;
-    final minuteText = minute.toString().padLeft(2, '0');
+    final String period = hour >= 12 ? 'PM' : 'AM';
+    final int hour12 = hour % 12 == 0 ? 12 : hour % 12;
+    final String minuteText = minute.toString().padLeft(2, '0');
 
     return '$hour12:$minuteText $period';
   }
+}
+
+class TaskCard extends StatelessWidget {
+  final TaskModel task;
+
+  const TaskCard({
+    super.key,
+    required this.task,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final TaskCardController controller =
+        TaskCardController(task);
+
     return Card(
       elevation: 2,
       margin: const EdgeInsets.symmetric(vertical: 8),
@@ -61,13 +70,11 @@ class TaskCard extends StatelessWidget {
               width: 4,
               height: 60,
               decoration: BoxDecoration(
-                color: _priorityColor,
+                color: controller.priorityColor,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-
             const SizedBox(width: 15),
-
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -81,9 +88,7 @@ class TaskCard extends StatelessWidget {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-
                   const SizedBox(height: 5),
-
                   Text(
                     task.category,
                     maxLines: 1,
@@ -93,50 +98,45 @@ class TaskCard extends StatelessWidget {
                       fontSize: 13,
                     ),
                   ),
-
                   const SizedBox(height: 5),
-
                   Text(
                     '${task.priority} Priority',
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
-                      color: _priorityColor,
+                      color: controller.priorityColor,
                       fontSize: 13,
                     ),
                   ),
                 ],
               ),
             ),
-
             const SizedBox(width: 12),
-
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  _formattedTime,
+                  controller.formattedTime,
                   style: const TextStyle(
                     color: Colors.blue,
                     fontWeight: FontWeight.bold,
                     fontSize: 13,
                   ),
                 ),
-
                 const SizedBox(height: 8),
-
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
                     vertical: 5,
                   ),
                   decoration: BoxDecoration(
-                    color: _statusColor.withValues(alpha: 0.15),
+                    color: controller.statusColor
+                        .withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     task.status,
                     style: TextStyle(
-                      color: _statusColor,
+                      color: controller.statusColor,
                       fontWeight: FontWeight.w600,
                       fontSize: 12,
                     ),

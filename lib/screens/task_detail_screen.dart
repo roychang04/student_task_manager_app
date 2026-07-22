@@ -3,6 +3,56 @@ import 'package:flutter/material.dart';
 
 import 'edit_task_screen.dart';
 
+class TaskDetailController {
+  final FirebaseFirestore _firestore;
+
+  TaskDetailController({
+    FirebaseFirestore? firestore,
+  }) : _firestore = firestore ?? FirebaseFirestore.instance;
+
+  DateTime? convertDueDate(dynamic value) {
+    if (value is Timestamp) {
+      return value.toDate();
+    }
+
+    if (value is DateTime) {
+      return value;
+    }
+
+    if (value is String) {
+      return DateTime.tryParse(value);
+    }
+
+    return null;
+  }
+
+  bool canChangeBackToPending(dynamic dueDate) {
+    final DateTime? convertedDate = convertDueDate(dueDate);
+
+    return convertedDate != null &&
+        convertedDate.isAfter(DateTime.now());
+  }
+
+  Future<void> markTaskAsCompleted(String taskId) async {
+    await _firestore.collection('tasks').doc(taskId).update({
+      'status': 'Completed',
+      'completedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> changeTaskBackToPending(String taskId) async {
+    await _firestore.collection('tasks').doc(taskId).update({
+      'status': 'Pending',
+      'completedAt': FieldValue.delete(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> deleteTask(String taskId) async {
+    await _firestore.collection('tasks').doc(taskId).delete();
+  }
+}
+
 class TaskDetailScreen extends StatelessWidget {
   final String taskId;
   final Map<String, dynamic> taskData;
@@ -17,10 +67,8 @@ class TaskDetailScreen extends StatelessWidget {
     switch (status) {
       case 'Completed':
         return Colors.green;
-
       case 'Overdue':
         return Colors.red;
-
       default:
         return Colors.orange;
     }
@@ -30,10 +78,8 @@ class TaskDetailScreen extends StatelessWidget {
     switch (priority) {
       case 'High':
         return Colors.red;
-
       case 'Medium':
         return Colors.orange;
-
       default:
         return Colors.green;
     }
@@ -41,114 +87,74 @@ class TaskDetailScreen extends StatelessWidget {
 
   String monthName(int month) {
     const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
     ];
 
     return months[month - 1];
   }
 
   String formatDate(dynamic dueDate) {
-    if (dueDate is Timestamp) {
-      final DateTime date = dueDate.toDate();
+    final TaskDetailController controller = TaskDetailController();
+    final DateTime? date = controller.convertDueDate(dueDate);
 
-      final int displayHour = date.hour == 0
-          ? 12
-          : date.hour > 12
-              ? date.hour - 12
-              : date.hour;
-
-      final String minute =
-          date.minute.toString().padLeft(2, '0');
-
-      final String period =
-          date.hour >= 12 ? 'PM' : 'AM';
-
-      return '${date.day} ${monthName(date.month)} ${date.year}, '
-          '$displayHour:$minute $period';
-    }
-
-    if (dueDate == null) {
+    if (date == null) {
       return 'No due date';
     }
 
-    return dueDate.toString();
+    final int displayHour = date.hour == 0
+        ? 12
+        : date.hour > 12
+            ? date.hour - 12
+            : date.hour;
+
+    final String minute = date.minute.toString().padLeft(2, '0');
+    final String period = date.hour >= 12 ? 'PM' : 'AM';
+
+    return '${date.day} ${monthName(date.month)} ${date.year}, '
+        '$displayHour:$minute $period';
+  }
+
+  void _showError(
+    BuildContext context,
+    Object error,
+    String fallbackMessage,
+  ) {
+    final String message = error is FirebaseException
+        ? error.message ?? fallbackMessage
+        : fallbackMessage;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   Future<void> _markTaskAsCompleted(
     BuildContext context,
+    TaskDetailController controller,
   ) async {
     try {
-      await FirebaseFirestore.instance
-          .collection('tasks')
-          .doc(taskId)
-          .update({
-        'status': 'Completed',
-        'completedAt': FieldValue.serverTimestamp(),
-      });
+      await controller.markTaskAsCompleted(taskId);
 
-      if (!context.mounted) {
-        return;
+      if (context.mounted) {
+        Navigator.pop(context);
       }
-
-      Navigator.pop(context);
-    } on FirebaseException catch (error) {
-      if (!context.mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            error.message ??
-                'Unable to mark the task as completed.',
-          ),
-        ),
-      );
     } catch (error) {
-      if (!context.mounted) {
-        return;
+      if (context.mounted) {
+        _showError(
+          context,
+          error,
+          'Unable to mark the task as completed.',
+        );
       }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Unable to mark the task as completed.',
-          ),
-        ),
-      );
     }
   }
 
   Future<void> _changeTaskBackToPending(
     BuildContext context,
+    TaskDetailController controller,
   ) async {
-    final dynamic dueDateData = taskData['dueDate'];
-
-    DateTime? taskDueDate;
-
-    if (dueDateData is Timestamp) {
-      taskDueDate = dueDateData.toDate();
-    } else if (dueDateData is DateTime) {
-      taskDueDate = dueDateData;
-    } else if (dueDateData is String) {
-      taskDueDate = DateTime.tryParse(dueDateData);
-    }
-
-    // Do not allow a completed task to return to Pending
-    // when its due date and time have already passed.
-    if (taskDueDate == null ||
-        !taskDueDate.isAfter(DateTime.now())) {
+    if (!controller.canChangeBackToPending(taskData['dueDate'])) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -191,14 +197,7 @@ class TaskDetailScreen extends StatelessWidget {
     }
 
     try {
-      await FirebaseFirestore.instance
-          .collection('tasks')
-          .doc(taskId)
-          .update({
-        'status': 'Pending',
-        'completedAt': FieldValue.delete(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      await controller.changeTaskBackToPending(taskId);
 
       if (!context.mounted) {
         return;
@@ -211,36 +210,20 @@ class TaskDetailScreen extends StatelessWidget {
       );
 
       Navigator.pop(context);
-    } on FirebaseException catch (error) {
-      if (!context.mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            error.message ??
-                'Unable to change the task status.',
-          ),
-        ),
-      );
     } catch (error) {
-      if (!context.mounted) {
-        return;
+      if (context.mounted) {
+        _showError(
+          context,
+          error,
+          'Unable to change the task status.',
+        );
       }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Unable to change the task status.',
-          ),
-        ),
-      );
     }
   }
 
   Future<void> _deleteTask(
     BuildContext context,
+    TaskDetailController controller,
   ) async {
     final bool? shouldDelete = await showDialog<bool>(
       context: context,
@@ -276,92 +259,51 @@ class TaskDetailScreen extends StatelessWidget {
     }
 
     try {
-      await FirebaseFirestore.instance
-          .collection('tasks')
-          .doc(taskId)
-          .delete();
+      await controller.deleteTask(taskId);
 
-      if (!context.mounted) {
-        return;
+      if (context.mounted) {
+        Navigator.pop(context);
       }
-
-      Navigator.pop(context);
-    } on FirebaseException catch (error) {
-      if (!context.mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            error.message ?? 'Unable to delete the task.',
-          ),
-        ),
-      );
     } catch (error) {
-      if (!context.mounted) {
-        return;
+      if (context.mounted) {
+        _showError(
+          context,
+          error,
+          'Unable to delete the task.',
+        );
       }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Unable to delete the task.'),
-        ),
-      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final String title =
-        taskData['title']?.toString() ?? '';
+    final TaskDetailController controller = TaskDetailController();
 
+    final String title = taskData['title']?.toString() ?? '';
     final String description =
         taskData['description']?.toString() ?? '';
-
     final String category =
         taskData['category']?.toString() ?? '';
-
     final String priority =
         taskData['priority']?.toString() ?? 'Low';
-
     final String status =
         taskData['status']?.toString() ?? 'Pending';
-
     final String reminder =
         taskData['reminder']?.toString() ?? 'No reminder';
-
-    final String dueDate = formatDate(
-      taskData['dueDate'],
-    );
+    final String dueDate = formatDate(taskData['dueDate']);
 
     final bool isCompleted =
         status.trim().toLowerCase() == 'completed';
 
-    final dynamic rawDueDate = taskData['dueDate'];
-
-    DateTime? dueDateValue;
-
-    if (rawDueDate is Timestamp) {
-      dueDateValue = rawDueDate.toDate();
-    } else if (rawDueDate is DateTime) {
-      dueDateValue = rawDueDate;
-    } else if (rawDueDate is String) {
-      dueDateValue = DateTime.tryParse(rawDueDate);
-    }
-
     final bool canChangeBackToPending =
-        dueDateValue != null &&
-        dueDateValue.isAfter(DateTime.now());
+        controller.canChangeBackToPending(taskData['dueDate']);
 
     return Scaffold(
       backgroundColor: const Color(0xffF6F7FB),
       appBar: AppBar(
         backgroundColor: const Color(0xffF6F7FB),
         elevation: 0,
-        iconTheme: const IconThemeData(
-          color: Colors.black,
-        ),
+        iconTheme: const IconThemeData(color: Colors.black),
         title: const Text(
           'Task Details',
           style: TextStyle(
@@ -428,20 +370,11 @@ class TaskDetailScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            Text(
-              description,
-              style: const TextStyle(
-                fontSize: 16,
-              ),
-            ),
+            Text(description, style: const TextStyle(fontSize: 16)),
             const SizedBox(height: 30),
             const Divider(),
             const SizedBox(height: 10),
-            detailRow(
-              Icons.calendar_today,
-              'Due Date',
-              dueDate,
-            ),
+            detailRow(Icons.calendar_today, 'Due Date', dueDate),
             const SizedBox(height: 18),
             detailRow(
               Icons.flag,
@@ -450,11 +383,7 @@ class TaskDetailScreen extends StatelessWidget {
               valueColor: priorityColor(priority),
             ),
             const SizedBox(height: 18),
-            detailRow(
-              Icons.category,
-              'Category',
-              category,
-            ),
+            detailRow(Icons.category, 'Category', category),
             const SizedBox(height: 18),
             detailRow(
               Icons.notifications_outlined,
@@ -469,16 +398,13 @@ class TaskDetailScreen extends StatelessWidget {
               valueColor: statusColor(status),
             ),
             const SizedBox(height: 40),
-
             if (!isCompleted)
               SizedBox(
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton.icon(
                   icon: const Icon(Icons.check),
-                  label: const Text(
-                    'Mark as Completed',
-                  ),
+                  label: const Text('Mark as Completed'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
                     foregroundColor: Colors.white,
@@ -487,31 +413,23 @@ class TaskDetailScreen extends StatelessWidget {
                     ),
                   ),
                   onPressed: () {
-                    _markTaskAsCompleted(context);
+                    _markTaskAsCompleted(context, controller);
                   },
                 ),
               ),
-
             if (isCompleted) ...[
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  vertical: 14,
-                ),
+                padding: const EdgeInsets.symmetric(vertical: 14),
                 decoration: BoxDecoration(
                   color: Colors.green.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: Colors.green,
-                  ),
+                  border: Border.all(color: Colors.green),
                 ),
                 child: const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(
-                      Icons.check_circle,
-                      color: Colors.green,
-                    ),
+                    Icon(Icons.check_circle, color: Colors.green),
                     SizedBox(width: 8),
                     Text(
                       'Task Completed',
@@ -530,7 +448,10 @@ class TaskDetailScreen extends StatelessWidget {
                 child: OutlinedButton.icon(
                   onPressed: canChangeBackToPending
                       ? () {
-                          _changeTaskBackToPending(context);
+                          _changeTaskBackToPending(
+                            context,
+                            controller,
+                          );
                         }
                       : null,
                   icon: const Icon(Icons.undo),
@@ -554,50 +475,43 @@ class TaskDetailScreen extends StatelessWidget {
                 ),
               ),
             ],
-
             const SizedBox(height: 15),
-
             Row(
               children: [
                 if (!isCompleted)
-  Expanded(
-    child: OutlinedButton(
-      onPressed: () async {
-        await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => EditTaskScreen(
-              taskId: taskId,
-              taskData: taskData,
-            ),
-          ),
-        );
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => EditTaskScreen(
+                              taskId: taskId,
+                              taskData: taskData,
+                            ),
+                          ),
+                        );
 
-        if (context.mounted) {
-          Navigator.pop(context);
-        }
-      },
-      style: OutlinedButton.styleFrom(
-        foregroundColor: Colors.blue,
-        side: const BorderSide(
-          color: Colors.blue,
-        ),
-      ),
-      child: const Text('Edit Task'),
-    ),
-  ),
-                if (!isCompleted)
-  const SizedBox(width: 15),
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                        }
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.blue,
+                        side: const BorderSide(color: Colors.blue),
+                      ),
+                      child: const Text('Edit Task'),
+                    ),
+                  ),
+                if (!isCompleted) const SizedBox(width: 15),
                 Expanded(
                   child: OutlinedButton(
                     onPressed: () {
-                      _deleteTask(context);
+                      _deleteTask(context, controller);
                     },
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.red,
-                      side: const BorderSide(
-                        color: Colors.red,
-                      ),
+                      side: const BorderSide(color: Colors.red),
                     ),
                     child: const Text('Delete Task'),
                   ),
@@ -619,10 +533,7 @@ class TaskDetailScreen extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(
-          icon,
-          color: Colors.grey[700],
-        ),
+        Icon(icon, color: Colors.grey[700]),
         const SizedBox(width: 12),
         Expanded(
           child: Text(

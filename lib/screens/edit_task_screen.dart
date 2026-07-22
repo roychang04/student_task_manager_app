@@ -1,6 +1,83 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+class EditTaskController {
+  final FirebaseFirestore _firestore;
+
+  EditTaskController({
+    FirebaseFirestore? firestore,
+  }) : _firestore = firestore ?? FirebaseFirestore.instance;
+
+  Stream<QuerySnapshot<Map<String, dynamic>>> get categoriesStream {
+    return _firestore
+        .collection('categories')
+        .orderBy('createdAt')
+        .snapshots();
+  }
+
+  DateTime convertDueDate(dynamic value) {
+    if (value is Timestamp) {
+      return value.toDate();
+    }
+
+    if (value is DateTime) {
+      return value;
+    }
+
+    if (value is String) {
+      return DateTime.tryParse(value) ?? DateTime.now();
+    }
+
+    return DateTime.now();
+  }
+
+  String? validate({
+    required String title,
+    required String description,
+    required String? category,
+    required DateTime dueDateTime,
+  }) {
+    if (title.trim().isEmpty) {
+      return 'Please enter a task title.';
+    }
+
+    if (description.trim().isEmpty) {
+      return 'Please enter a task description.';
+    }
+
+    if (category == null || category.trim().isEmpty) {
+      return 'Please select a category.';
+    }
+
+    if (dueDateTime.isBefore(DateTime.now())) {
+      return 'Task date and time cannot be before the current time.';
+    }
+
+    return null;
+  }
+
+  Future<void> updateTask({
+    required String taskId,
+    required String title,
+    required String description,
+    required String category,
+    required String priority,
+    required String reminder,
+    required DateTime dueDateTime,
+  }) async {
+    await _firestore.collection('tasks').doc(taskId).update({
+      'title': title.trim(),
+      'description': description.trim(),
+      'category': category,
+      'priority': priority,
+      'reminder': reminder,
+      'dueDate': Timestamp.fromDate(dueDateTime),
+      'status': 'Pending',
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+}
+
 class EditTaskScreen extends StatefulWidget {
   final String taskId;
   final Map<String, dynamic> taskData;
@@ -18,22 +95,18 @@ class EditTaskScreen extends StatefulWidget {
 
 class _EditTaskScreenState extends State<EditTaskScreen> {
   final _formKey = GlobalKey<FormState>();
-  final CollectionReference<Map<String, dynamic>>
-    _categoryCollection =
-    FirebaseFirestore.instance.collection('categories');
+  final EditTaskController _controller = EditTaskController();
 
   late final TextEditingController titleController;
   late final TextEditingController descriptionController;
+  late final TextEditingController dueDateController;
 
   String? selectedCategory;
   String selectedPriority = 'Low';
   String selectedReminder = 'No reminder';
-
   DateTime selectedDateTime = DateTime.now();
-
   bool _isUpdating = false;
 
-  // Must match AddTaskScreen exactly.
   final List<String> reminders = [
     'No reminder',
     '10 minutes before',
@@ -57,7 +130,7 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
         widget.taskData['category']?.toString().trim() ?? '';
 
     selectedCategory =
-      savedCategory.isEmpty ? null : savedCategory;
+        savedCategory.isEmpty ? null : savedCategory;
 
     final String savedPriority =
         widget.taskData['priority']?.toString().trim() ?? 'Low';
@@ -78,39 +151,27 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
         ? savedReminder
         : 'No reminder';
 
-    final dynamic dueDate = widget.taskData['dueDate'];
+    selectedDateTime = _controller.convertDueDate(
+      widget.taskData['dueDate'],
+    );
 
-    if (dueDate is Timestamp) {
-      selectedDateTime = dueDate.toDate();
-    } else if (dueDate is DateTime) {
-      selectedDateTime = dueDate;
-    } else if (dueDate is String) {
-      selectedDateTime =
-          DateTime.tryParse(dueDate) ?? DateTime.now();
-    }
+    dueDateController = TextEditingController(
+      text: _formatDateTime(selectedDateTime),
+    );
   }
 
   @override
   void dispose() {
     titleController.dispose();
     descriptionController.dispose();
+    dueDateController.dispose();
     super.dispose();
   }
 
   String _monthName(int month) {
     const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
     ];
 
     return months[month - 1];
@@ -123,11 +184,8 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
             ? date.hour - 12
             : date.hour;
 
-    final String minute =
-        date.minute.toString().padLeft(2, '0');
-
-    final String period =
-        date.hour >= 12 ? 'PM' : 'AM';
+    final String minute = date.minute.toString().padLeft(2, '0');
+    final String period = date.hour >= 12 ? 'PM' : 'AM';
 
     return '${date.day} ${_monthName(date.month)} '
         '${date.year}, $displayHour:$minute $period';
@@ -137,13 +195,17 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
     switch (priority) {
       case 'High':
         return Colors.red;
-
       case 'Medium':
         return Colors.orange;
-
       default:
         return Colors.green;
     }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   Future<void> _pickDateTime() async {
@@ -152,7 +214,6 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
     }
 
     final DateTime now = DateTime.now();
-
     final DateTime initialDate =
         selectedDateTime.isBefore(now)
             ? now
@@ -161,11 +222,7 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
     final DateTime? pickedDate = await showDatePicker(
       context: context,
       initialDate: initialDate,
-      firstDate: DateTime(
-        now.year,
-        now.month,
-        now.day,
-      ),
+      firstDate: DateTime(now.year, now.month, now.day),
       lastDate: DateTime(2035),
     );
 
@@ -175,9 +232,7 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
 
     final TimeOfDay? pickedTime = await showTimePicker(
       context: context,
-      initialTime: TimeOfDay.fromDateTime(
-        selectedDateTime,
-      ),
+      initialTime: TimeOfDay.fromDateTime(selectedDateTime),
     );
 
     if (pickedTime == null || !mounted) {
@@ -192,6 +247,9 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
         pickedTime.hour,
         pickedTime.minute,
       );
+
+      dueDateController.text =
+          _formatDateTime(selectedDateTime);
     });
   }
 
@@ -204,25 +262,15 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
       return;
     }
 
-    if (selectedCategory == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select a category.'),
-        ),
-      );
+    final String? validationMessage = _controller.validate(
+      title: titleController.text,
+      description: descriptionController.text,
+      category: selectedCategory,
+      dueDateTime: selectedDateTime,
+    );
 
-      return;
-    }
-
-    if (selectedDateTime.isBefore(DateTime.now())) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Task date and time cannot be before the current time.',
-          ),
-        ),
-      );
-
+    if (validationMessage != null) {
+      _showMessage(validationMessage);
       return;
     }
 
@@ -231,61 +279,34 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
     });
 
     try {
-      await FirebaseFirestore.instance
-          .collection('tasks')
-          .doc(widget.taskId)
-          .update({
-        'title': titleController.text.trim(),
-        'description':
-            descriptionController.text.trim(),
-        'category': selectedCategory,
-        'priority': selectedPriority,
-        'reminder': selectedReminder,
-        'dueDate': Timestamp.fromDate(
-          selectedDateTime,
-        ),
-        'status': 'Pending',
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      await _controller.updateTask(
+        taskId: widget.taskId,
+        title: titleController.text,
+        description: descriptionController.text,
+        category: selectedCategory!,
+        priority: selectedPriority,
+        reminder: selectedReminder,
+        dueDateTime: selectedDateTime,
+      );
 
       if (!mounted) {
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Task updated successfully.',
-          ),
-        ),
-      );
-
+      _showMessage('Task updated successfully.');
       Navigator.pop(context);
     } on FirebaseException catch (error) {
       if (!mounted) {
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            error.message ??
-                'Unable to update the task.',
-          ),
-        ),
+      _showMessage(
+        error.message ?? 'Unable to update the task.',
       );
-    } catch (error) {
-      if (!mounted) {
-        return;
+    } catch (_) {
+      if (mounted) {
+        _showMessage('Unable to update the task.');
       }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Unable to update the task.',
-          ),
-        ),
-      );
     } finally {
       if (mounted) {
         setState(() {
@@ -296,11 +317,8 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
   }
 
   Widget _priorityButton(String priority) {
-    final bool isSelected =
-        selectedPriority == priority;
-
-    final Color color =
-        _priorityColor(priority);
+    final bool isSelected = selectedPriority == priority;
+    final Color color = _priorityColor(priority);
 
     return Expanded(
       child: GestureDetector(
@@ -319,15 +337,12 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
                 ? color
                 : color.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: color,
-            ),
+            border: Border.all(color: color),
           ),
           child: Text(
             priority,
             style: TextStyle(
-              color:
-                  isSelected ? Colors.white : color,
+              color: isSelected ? Colors.white : color,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -345,15 +360,11 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: BorderSide(
-          color: Colors.grey.shade300,
-        ),
+        borderSide: BorderSide(color: Colors.grey.shade300),
       ),
       disabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: BorderSide(
-          color: Colors.grey.shade300,
-        ),
+        borderSide: BorderSide(color: Colors.grey.shade300),
       ),
     );
   }
@@ -367,9 +378,7 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
         appBar: AppBar(
           backgroundColor: const Color(0xffF6F7FB),
           elevation: 0,
-          iconTheme: const IconThemeData(
-            color: Colors.black,
-          ),
+          iconTheme: const IconThemeData(color: Colors.black),
           title: const Text(
             'Edit Task',
             style: TextStyle(
@@ -384,22 +393,18 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
           child: Form(
             key: _formKey,
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
                   'Title',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
                   controller: titleController,
                   enabled: !_isUpdating,
                   validator: (value) {
-                    if (value == null ||
-                        value.trim().isEmpty) {
+                    if (value == null || value.trim().isEmpty) {
                       return 'Please enter a task title.';
                     }
 
@@ -410,9 +415,7 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
                 const SizedBox(height: 18),
                 const Text(
                   'Description',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
@@ -420,8 +423,7 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
                   enabled: !_isUpdating,
                   maxLines: 4,
                   validator: (value) {
-                    if (value == null ||
-                        value.trim().isEmpty) {
+                    if (value == null || value.trim().isEmpty) {
                       return 'Please enter a task description.';
                     }
 
@@ -432,15 +434,11 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
                 const SizedBox(height: 18),
                 const Text(
                   'Category / Subject',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
                 StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                  stream: _categoryCollection
-                      .orderBy('createdAt')
-                      .snapshots(),
+                  stream: _controller.categoriesStream,
                   builder: (context, snapshot) {
                     if (snapshot.hasError) {
                       return const Text(
@@ -457,8 +455,10 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
                     final List<String> categoryNames =
                         snapshot.data?.docs
                                 .map(
-                                  (document) =>
-                                      document.data()['name']?.toString().trim() ??
+                                  (document) => document
+                                          .data()['name']
+                                          ?.toString()
+                                          .trim() ??
                                       '',
                                 )
                                 .where((name) => name.isNotEmpty)
@@ -468,11 +468,6 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
                     final String? currentCategory =
                         selectedCategory;
 
-                    /*
-                    * Older tasks may still contain hardcoded category
-                    * values such as Quiz or Assignment. I included the saved
-                    * value temporarily so the edit screen can display it.
-                    */
                     if (currentCategory != null &&
                         currentCategory.isNotEmpty &&
                         !categoryNames.contains(currentCategory)) {
@@ -494,12 +489,12 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
                       decoration: _inputDecoration(),
                       items: categoryNames.map((category) {
                         return DropdownMenuItem<String>(
-
                           value: category,
                           child: Text(category),
                         );
                       }).toList(),
-                      onChanged: _isUpdating || categoryNames.isEmpty
+                      onChanged: _isUpdating ||
+                              categoryNames.isEmpty
                           ? null
                           : (value) {
                               setState(() {
@@ -512,9 +507,7 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
                 const SizedBox(height: 18),
                 const Text(
                   'Priority',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 10),
                 Row(
@@ -529,23 +522,15 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
                 const SizedBox(height: 20),
                 const Text(
                   'Due Date & Time',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
                 GestureDetector(
-                  onTap:
-                      _isUpdating ? null : _pickDateTime,
+                  onTap: _isUpdating ? null : _pickDateTime,
                   child: AbsorbPointer(
                     child: TextFormField(
-                      controller: TextEditingController(
-                        text: _formatDateTime(
-                          selectedDateTime,
-                        ),
-                      ),
-                      decoration:
-                          _inputDecoration().copyWith(
+                      controller: dueDateController,
+                      decoration: _inputDecoration().copyWith(
                         suffixIcon: const Icon(
                           Icons.calendar_today,
                         ),
@@ -556,22 +541,18 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
                 const SizedBox(height: 20),
                 const Text(
                   'Remind Me',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
-                  initialValue:
-                      reminders.contains(selectedReminder)
-                          ? selectedReminder
-                          : 'No reminder',
+                  initialValue: reminders.contains(selectedReminder)
+                      ? selectedReminder
+                      : 'No reminder',
                   decoration: _inputDecoration(),
                   items: reminders
                       .toSet()
                       .map(
-                        (reminder) =>
-                            DropdownMenuItem<String>(
+                        (reminder) => DropdownMenuItem<String>(
                           value: reminder,
                           child: Text(reminder),
                         ),
@@ -602,19 +583,16 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
                       foregroundColor: Colors.white,
                       disabledBackgroundColor:
                           const Color(0xffA5A1F5),
-                      disabledForegroundColor:
-                          Colors.white,
+                      disabledForegroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(10),
                       ),
                     ),
                     child: _isUpdating
                         ? const SizedBox(
                             width: 22,
                             height: 22,
-                            child:
-                                CircularProgressIndicator(
+                            child: CircularProgressIndicator(
                               strokeWidth: 2.5,
                               color: Colors.white,
                             ),
@@ -623,8 +601,7 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
                             'Update Task',
                             style: TextStyle(
                               fontSize: 16,
-                              fontWeight:
-                                  FontWeight.bold,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
                   ),

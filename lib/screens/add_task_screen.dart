@@ -1,6 +1,65 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+
+class AddTaskController {
+  final FirebaseFirestore _firestore;
+
+  AddTaskController({FirebaseFirestore? firestore})
+      : _firestore = firestore ?? FirebaseFirestore.instance;
+
+  Stream<QuerySnapshot<Map<String, dynamic>>> get categoriesStream {
+    return _firestore
+        .collection('categories')
+        .orderBy('createdAt')
+        .snapshots();
+  }
+
+  String? validate({
+    required String title,
+    required String description,
+    required String? category,
+    required DateTime? dueDateTime,
+  }) {
+    if (title.trim().isEmpty) {
+      return 'Please enter a task title.';
+    }
+    if (description.trim().isEmpty) {
+      return 'Please enter a task description.';
+    }
+    if (category == null || category.trim().isEmpty) {
+      return 'Please select a category.';
+    }
+    if (dueDateTime == null) {
+      return 'Please select a due date and time.';
+    }
+    if (dueDateTime.isBefore(DateTime.now())) {
+      return 'Task date and time cannot be before current time';
+    }
+    return null;
+  }
+
+  Future<void> saveTask({
+    required String title,
+    required String description,
+    required String category,
+    required String priority,
+    required DateTime dueDateTime,
+    required String reminder,
+  }) async {
+    await _firestore.collection('tasks').add({
+      'title': title.trim(),
+      'description': description.trim(),
+      'category': category,
+      'priority': priority,
+      'dueDate': Timestamp.fromDate(dueDateTime),
+      'reminder': reminder,
+      'status': 'Pending',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+}
+
 class AddTaskScreen extends StatefulWidget {
   const AddTaskScreen({super.key});
 
@@ -11,9 +70,7 @@ class AddTaskScreen extends StatefulWidget {
 class _AddTaskScreenState extends State<AddTaskScreen> {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
-  final CollectionReference<Map<String, dynamic>>
-    _categoryCollection =
-    FirebaseFirestore.instance.collection('categories');
+  final AddTaskController _controller = AddTaskController();
 
   String? selectedCategory;
   String selectedPriority = 'Low';
@@ -70,61 +127,29 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   }
 
   Future<void> _saveTask() async {
-    // Prevent double-click from running this function twice.
     if (_isSaving) return;
 
-    if (_titleController.text.trim().isEmpty) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    const SnackBar(
-      content: Text('Please enter a task title.'),
-    ),
-  );
-  return;
-}
+    final DateTime? selectedDateTime =
+        selectedDate == null || selectedTime == null
+            ? null
+            : DateTime(
+                selectedDate!.year,
+                selectedDate!.month,
+                selectedDate!.day,
+                selectedTime!.hour,
+                selectedTime!.minute,
+              );
 
-if (_descriptionController.text.trim().isEmpty) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    const SnackBar(
-      content: Text('Please enter a task description.'),
-    ),
-  );
-  return;
-}
-
-if (selectedCategory == null) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    const SnackBar(
-      content: Text('Please select a category.'),
-    ),
-  );
-  return;
-}
-
-if (selectedDate == null || selectedTime == null) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    const SnackBar(
-      content: Text('Please select a due date and time.'),
-    ),
-  );
-  return;
-}
-
-
-    final selectedDateTime = DateTime(
-      selectedDate!.year,
-      selectedDate!.month,
-      selectedDate!.day,
-      selectedTime!.hour,
-      selectedTime!.minute,
+    final String? validationMessage = _controller.validate(
+      title: _titleController.text,
+      description: _descriptionController.text,
+      category: selectedCategory,
+      dueDateTime: selectedDateTime,
     );
 
-    if (selectedDateTime.isBefore(DateTime.now())) {
+    if (validationMessage != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Task date and time cannot be before current time',
-          ),
-        ),
+        SnackBar(content: Text(validationMessage)),
       );
       return;
     }
@@ -134,33 +159,26 @@ if (selectedDate == null || selectedTime == null) {
     });
 
     try {
-      await FirebaseFirestore.instance.collection('tasks').add({
-        'title': _titleController.text.trim(),
-        'description': _descriptionController.text.trim(),
-        'category': selectedCategory,
-        'priority': selectedPriority,
-        'dueDate': Timestamp.fromDate(selectedDateTime),
-        'reminder': selectedReminder,
-        'status': 'Pending',
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+      await _controller.saveTask(
+        title: _titleController.text,
+        description: _descriptionController.text,
+        category: selectedCategory!,
+        priority: selectedPriority,
+        dueDateTime: selectedDateTime!,
+        reminder: selectedReminder,
+      );
 
       if (!mounted) return;
-
       Navigator.pop(context);
     } on FirebaseException catch (error) {
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            error.message ?? 'Unable to save task',
-          ),
+          content: Text(error.message ?? 'Unable to save task'),
         ),
       );
-    } catch (error) {
+    } catch (_) {
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Unable to save task. Please try again.'),
@@ -331,9 +349,7 @@ if (selectedDate == null || selectedTime == null) {
               _inputLabel('Category / Subject'),
 
               StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: _categoryCollection
-                    .orderBy('createdAt')
-                    .snapshots(),
+                stream: _controller.categoriesStream,
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
                     return const Text(

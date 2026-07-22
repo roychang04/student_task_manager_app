@@ -7,6 +7,37 @@ import 'package:flutter/material.dart';
 import 'add_task_screen.dart';
 import 'task_detail_screen.dart';
 
+
+class TaskListController {
+  final FirebaseFirestore _firestore;
+  final AuthService _authService;
+
+  TaskListController({
+    FirebaseFirestore? firestore,
+    AuthService? authService,
+  })  : _firestore = firestore ?? FirebaseFirestore.instance,
+        _authService = authService ?? AuthService();
+
+  Stream<QuerySnapshot<Map<String, dynamic>>> get tasksStream {
+    return _firestore
+        .collection('tasks')
+        .orderBy('createdAt', descending: true)
+        .snapshots();
+  }
+
+  Stream<DocumentSnapshot<Map<String, dynamic>>>? get settingsStream {
+    final user = _authService.currentUser;
+    if (user == null) {
+      return null;
+    }
+
+    return _firestore
+        .collection('userdata')
+        .doc(user.uid)
+        .snapshots();
+  }
+}
+
 class TaskListScreen extends StatefulWidget {
   final String initialFilter;
 
@@ -21,7 +52,7 @@ class TaskListScreen extends StatefulWidget {
 }
 
 class _TaskListScreenState extends State<TaskListScreen> {
-  final AuthService _authService = AuthService();
+  final TaskListController _controller = TaskListController();
 
   late String selectedFilter;
   String searchQuery = '';
@@ -45,23 +76,18 @@ class _TaskListScreenState extends State<TaskListScreen> {
   ];
 
   void _listenToUserSettings() {
-    final user = _authService.currentUser;
+    final settingsStream = _controller.settingsStream;
 
-    if (user == null) {
+    if (settingsStream == null) {
       return;
     }
 
-    _settingsSubscription = FirebaseFirestore.instance
-        .collection('userdata')
-        .doc(user.uid)
-        .snapshots()
-        .listen((snapshot) {
+    _settingsSubscription = settingsStream.listen((snapshot) {
       if (!mounted) {
         return;
       }
 
       final data = snapshot.data();
-
       final loadedSorting =
           data?['defaultTaskSorting']?.toString() ?? 'Due Date';
 
@@ -87,13 +113,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
 
     selectedFilter = widget.initialFilter;
 
-    _tasksStream = FirebaseFirestore.instance
-        .collection('tasks')
-        .orderBy(
-          'createdAt',
-          descending: true,
-        )
-        .snapshots();
+    _tasksStream = _controller.tasksStream;
 
     _listenToUserSettings();
 
