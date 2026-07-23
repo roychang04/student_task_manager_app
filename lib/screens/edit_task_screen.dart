@@ -504,7 +504,7 @@ class _EditTaskScreenState extends State<EditTaskScreen> {
                             : null;
 
                     return DropdownButtonFormField<String>(
-                      value: validSelectedCategory,
+                      initialValue: validSelectedCategory,
                       hint: Text(
                         categoryNames.isEmpty
                             ? 'No categories available'
