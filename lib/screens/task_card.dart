@@ -52,6 +52,7 @@ class TaskCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final String status = task.effectiveStatus(DateTime.now());
     final TaskCardController controller =
         TaskCardController(task);
 
@@ -129,12 +130,11 @@ class TaskCard extends StatelessWidget {
                     vertical: 5,
                   ),
                   decoration: BoxDecoration(
-                    color: controller.statusColor
-                        .withValues(alpha: 0.15),
+                    color: controller.statusColor.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    task.status,
+                    status,
                     style: TextStyle(
                       color: controller.statusColor,
                       fontWeight: FontWeight.w600,
