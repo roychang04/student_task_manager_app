@@ -33,9 +33,12 @@ class StudentBottomNavBar extends StatelessWidget {
             userData?['notificationsEnabled'] as bool? ?? true;
 
         return StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('tasks')
-              .snapshots(),
+          stream: user == null
+              ? null
+              : FirebaseFirestore.instance
+                  .collection('tasks')
+                  .where('userId', isEqualTo: user.uid)
+                  .snapshots(),
           builder: (context, snapshot) {
             int reminderCount = 0;
 

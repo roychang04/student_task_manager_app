@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:student_task_manager_app/models/task_model.dart';
 import 'package:table_calendar/table_calendar.dart';
 
@@ -58,10 +59,16 @@ class _CalendarPageState extends State<CalendarPage> {
   Widget build(BuildContext context) {
     return SafeArea(
       child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance
-            .collection('tasks')
-            .orderBy('dueDate')
-            .snapshots(),
+        stream: FirebaseAuth.instance.currentUser == null
+            ? const Stream.empty()
+            : FirebaseFirestore.instance
+                .collection('tasks')
+                .where(
+                  'userId',
+                  isEqualTo: FirebaseAuth.instance.currentUser!.uid,
+                )
+                .orderBy('dueDate')
+                .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return Center(

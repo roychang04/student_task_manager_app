@@ -65,10 +65,15 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
 
-    _tasksStream = FirebaseFirestore.instance
-        .collection('tasks')
-        .orderBy('dueDate')
-        .snapshots();
+    final userId = _authService.currentUserId;
+
+    _tasksStream = userId == null
+        ? const Stream.empty()
+        : FirebaseFirestore.instance
+            .collection('tasks')
+            .where('userId', isEqualTo: userId)
+            .orderBy('dueDate')
+            .snapshots();
 
     _listenToCurrentUser();
 

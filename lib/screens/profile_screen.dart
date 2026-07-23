@@ -85,7 +85,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         email = data['email']?.toString() ?? user.email ?? '';
 
         notificationsEnabled =
-            data['notificationEnabled'] as bool? ?? true;
+            data['notificationsEnabled'] as bool? ?? true;
 
         defaultTaskSorting = sortingOptions.contains(loadedSorting)
             ? loadedSorting
@@ -544,7 +544,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                 try {
                   await _updateUserData({
-                    'notificationEnabled': value,
+                    'notificationsEnabled': value,
                   });
                 } catch (error) {
                   if (!mounted) return;

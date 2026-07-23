@@ -1,16 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 
 class AddTaskController {
   final FirebaseFirestore _firestore;
+  final FirebaseAuth _auth;
 
-  AddTaskController({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? FirebaseFirestore.instance;
+  AddTaskController({
+    FirebaseFirestore? firestore,
+    FirebaseAuth? auth,
+  })  : _firestore = firestore ?? FirebaseFirestore.instance,
+        _auth = auth ?? FirebaseAuth.instance;
 
   Stream<QuerySnapshot<Map<String, dynamic>>> get categoriesStream {
+    final user = _auth.currentUser;
+
+    if (user == null) {
+      return const Stream.empty();
+    }
+
     return _firestore
         .collection('categories')
+        .where('userId', isEqualTo: user.uid)
         .orderBy('createdAt')
         .snapshots();
   }
@@ -47,7 +59,17 @@ class AddTaskController {
     required DateTime dueDateTime,
     required String reminder,
   }) async {
+    final user = _auth.currentUser;
+
+    if (user == null) {
+      throw FirebaseAuthException(
+        code: 'not-authenticated',
+        message: 'Please log in before creating a task.',
+      );
+    }
+
     await _firestore.collection('tasks').add({
+      'userId': user.uid,
       'title': title.trim(),
       'description': description.trim(),
       'category': category,

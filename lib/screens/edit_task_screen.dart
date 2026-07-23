@@ -1,12 +1,16 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class EditTaskController {
   final FirebaseFirestore _firestore;
+  final FirebaseAuth _auth;
 
   EditTaskController({
     FirebaseFirestore? firestore,
-  }) : _firestore = firestore ?? FirebaseFirestore.instance;
+    FirebaseAuth? auth,
+  })  : _firestore = firestore ?? FirebaseFirestore.instance,
+        _auth = auth ?? FirebaseAuth.instance;
 
   Stream<QuerySnapshot<Map<String, dynamic>>> get categoriesStream {
     return _firestore
@@ -65,7 +69,27 @@ class EditTaskController {
     required String reminder,
     required DateTime dueDateTime,
   }) async {
-    await _firestore.collection('tasks').doc(taskId).update({
+    final user = _auth.currentUser;
+
+    if (user == null) {
+      throw FirebaseAuthException(
+        code: 'not-authenticated',
+        message: 'Please log in before updating a task.',
+      );
+    }
+
+    final reference = _firestore.collection('tasks').doc(taskId);
+    final snapshot = await reference.get();
+
+    if (!snapshot.exists || snapshot.data()?['userId'] != user.uid) {
+      throw FirebaseException(
+        plugin: 'cloud_firestore',
+        code: 'permission-denied',
+        message: 'You can only update your own tasks.',
+      );
+    }
+
+    await reference.update({
       'title': title.trim(),
       'description': description.trim(),
       'category': category,

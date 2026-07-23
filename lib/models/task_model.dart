@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class TaskModel {
   final String id;
+  final String userId;
   final String category;
   final DateTime createdAt;
   final String description;
@@ -13,6 +14,7 @@ class TaskModel {
 
   const TaskModel({
     required this.id,
+    required this.userId,
     required this.category,
     required this.createdAt,
     required this.description,
@@ -30,6 +32,7 @@ class TaskModel {
 
     return TaskModel(
       id: document.id,
+      userId: data['userId']?.toString() ?? '',
       category: data['category']?.toString() ?? '',
       createdAt: _dateFromFirestore(data['createdAt']),
       description: data['description']?.toString() ?? '',
@@ -55,6 +58,7 @@ class TaskModel {
 
   Map<String, dynamic> toFirestore() {
     return {
+      'userId': userId,
       'category': category,
       'createdAt': Timestamp.fromDate(createdAt),
       'description': description,

@@ -19,8 +19,15 @@ class TaskListController {
         _authService = authService ?? AuthService();
 
   Stream<QuerySnapshot<Map<String, dynamic>>> get tasksStream {
+    final userId = _authService.currentUserId;
+
+    if (userId == null) {
+      return const Stream.empty();
+    }
+
     return _firestore
         .collection('tasks')
+        .where('userId', isEqualTo: userId)
         .orderBy('createdAt', descending: true)
         .snapshots();
   }
