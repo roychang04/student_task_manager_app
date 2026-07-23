@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../models/user_model.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -37,14 +38,18 @@ class AuthService {
       throw Exception('Unable to create user');
     }
 
-    await _firestore.collection('userdata').doc(user.uid).set({
-      'username': username,
-      'email': email,
-      'uid': user.uid,
-      'notificationsEnabled': true,
-      'defaultTaskSorting': 'Due Date',
-      'createdAt': FieldValue.serverTimestamp(),
-    });
+    final userModel = UserModel(
+      uid: user.uid,
+      username: username,
+      email: email,
+      notificationsEnabled: true,
+      defaultTaskSorting: 'Due Date',
+    );
+
+    await _firestore
+        .collection('userdata')
+        .doc(user.uid)
+        .set(userModel.toMap());
 
     return userCredential;
   }

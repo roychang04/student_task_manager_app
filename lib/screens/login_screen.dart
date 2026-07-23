@@ -1,7 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import '../services/auth_service.dart';
+import '../controllers/auth_controller.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -12,7 +12,8 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final AuthService _authService = AuthService();
+  // MVC Controller instance
+  final AuthController _authController = AuthController();
 
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -56,39 +57,37 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      await _authService.login(
+      await _authController.login(
         email: email,
         password: password,
       );
 
-      // No Navigator needed.
-      // AuthWrapper will automatically show DashboardScreen.
+      // AuthWrapper automatically shows DashboardScreen on auth state change.
+    } on FormatException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
     } on FirebaseAuthException catch (error) {
       if (!mounted) return;
 
       String message;
-
       switch (error.code) {
         case 'user-not-found':
           message = 'No account found with this email.';
           break;
-
         case 'wrong-password':
           message = 'Incorrect password. Please try again.';
           break;
-
         case 'invalid-email':
           message = 'Please enter a valid email address.';
           break;
-
         case 'user-disabled':
           message = 'This account has been disabled.';
           break;
-
         case 'invalid-credential':
           message = 'Invalid email or password.';
           break;
-
         default:
           message = error.message ?? 'Login failed. Please try again.';
       }
@@ -98,7 +97,6 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } catch (error) {
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Login failed. Please try again.'),
@@ -111,6 +109,185 @@ class _LoginScreenState extends State<LoginScreen> {
         });
       }
     }
+  }
+
+  /// Handles Forgot Password function
+  void _showForgotPasswordDialog() {
+    final resetEmailController = TextEditingController(
+      text: _emailController.text.trim(),
+    );
+    bool isSending = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xff4F46E5).withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.lock_reset_rounded,
+                      color: Color(0xff4F46E5),
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'Reset Password',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Enter your registered email address and we will send you a password reset link.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey.shade600,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _inputLabel('Email Address'),
+                  TextField(
+                    controller: resetEmailController,
+                    enabled: !isSending,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: _inputDecoration(
+                      'Enter your email',
+                      prefixIcon: Icon(
+                        Icons.email_outlined,
+                        color: Colors.grey.shade500,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actionsPadding: const EdgeInsets.only(
+                left: 20,
+                right: 20,
+                bottom: 20,
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSending
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
+                  child: Text(
+                    'Cancel',
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: isSending
+                      ? null
+                      : () async {
+                          final emailText = resetEmailController.text.trim();
+                          if (emailText.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Please enter your email address.'),
+                              ),
+                            );
+                            return;
+                          }
+
+                          setDialogState(() {
+                            isSending = true;
+                          });
+
+                          try {
+                            await _authController.sendPasswordResetEmail(emailText);
+                            if (!mounted) return;
+                            Navigator.of(dialogContext).pop();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                backgroundColor: const Color(0xff4F46E5),
+                                content: Text(
+                                  'Password reset link sent to $emailText. Please check your inbox.',
+                                ),
+                              ),
+                            );
+                          } on FormatException catch (err) {
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(err.message)),
+                            );
+                          } on FirebaseAuthException catch (err) {
+                            if (!mounted) return;
+                            String msg = err.message ?? 'Failed to send reset email.';
+                            if (err.code == 'user-not-found') {
+                              msg = 'No user account found with this email.';
+                            } else if (err.code == 'invalid-email') {
+                              msg = 'Please enter a valid email address.';
+                            }
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(msg)),
+                            );
+                          } catch (err) {
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Failed to send reset email. Try again.'),
+                              ),
+                            );
+                          } finally {
+                            setDialogState(() {
+                              isSending = false;
+                            });
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xff4F46E5),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: isSending
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'Send Reset Link',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   void _navigateToRegister() {
@@ -225,16 +402,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
 
-                const SizedBox(height: 6),
-
-                Text(
-                  'Sign in to continue',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-
                 const SizedBox(height: 36),
 
                 // Login Form Card
@@ -305,7 +472,31 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
 
-                      const SizedBox(height: 24),
+                      // Forgot Password Button
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: _isLoading ? null : _showForgotPasswordDialog,
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 0,
+                              vertical: 4,
+                            ),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          child: const Text(
+                            'Forgot Password?',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xff4F46E5),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
 
                       // Login Button
                       SizedBox(

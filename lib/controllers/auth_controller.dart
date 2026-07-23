@@ -1,0 +1,135 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../services/auth_service.dart';
+
+class AuthController {
+  final AuthService _authService = AuthService();
+
+  User? get currentUser => _authService.currentUser;
+  String? get currentUserId => _authService.currentUserId;
+  String? get currentUserEmail => _authService.currentUserEmail;
+  Stream<User?> get authStateChanges => _authService.authStateChanges;
+
+  /// Validates password strength:
+  /// - Min 6 characters
+  /// - At least one uppercase letter (A-Z)
+  /// - At least one number (0-9)
+  /// - At least one special character
+  static String? validatePassword(String password) {
+    if (password.isEmpty) {
+      return 'Please enter a password.';
+    }
+    if (password.length < 6) {
+      return 'Password must be at least 6 characters long.';
+    }
+    if (!password.contains(RegExp(r'[A-Z]'))) {
+      return 'Password must contain at least one capital letter (A-Z).';
+    }
+    if (!password.contains(RegExp(r'[0-9]'))) {
+      return 'Password must contain at least one number (0-9).';
+    }
+    if (!password.contains(RegExp(r'[^a-zA-Z0-9]'))) {
+      return 'Password must contain at least one special character (!@#\$%^&* etc).';
+    }
+    return null;
+  }
+
+  /// Validates email format
+  static String? validateEmail(String email) {
+    if (email.trim().isEmpty) {
+      return 'Please enter your email.';
+    }
+    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+    if (!emailRegex.hasMatch(email.trim())) {
+      return 'Please enter a valid email address.';
+    }
+    return null;
+  }
+
+  /// Checks if a username is already taken in the Firestore 'userdata' collection
+  Future<bool> isUsernameTaken(String username) async {
+    final cleanUsername = username.trim();
+    if (cleanUsername.isEmpty) return false;
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection('userdata')
+        .where('username', isEqualTo: cleanUsername)
+        .limit(1)
+        .get();
+
+    return snapshot.docs.isNotEmpty;
+  }
+
+  /// Login user with email and password
+  Future<UserCredential> login({
+    required String email,
+    required String password,
+  }) async {
+    final emailError = validateEmail(email);
+    if (emailError != null) {
+      throw FormatException(emailError);
+    }
+    if (password.trim().isEmpty) {
+      throw const FormatException('Please enter your password.');
+    }
+
+    return await _authService.login(
+      email: email.trim(),
+      password: password.trim(),
+    );
+  }
+
+  /// Register user and create user profile in Firestore
+  Future<UserCredential> register({
+    required String username,
+    required String email,
+    required String password,
+    required String confirmPassword,
+  }) async {
+    if (username.trim().isEmpty) {
+      throw const FormatException('Please enter your username.');
+    }
+
+    final taken = await isUsernameTaken(username);
+    if (taken) {
+      throw const FormatException('Username is already taken.');
+    }
+
+    final emailError = validateEmail(email);
+    if (emailError != null) {
+      throw FormatException(emailError);
+    }
+
+    final passwordError = validatePassword(password);
+    if (passwordError != null) {
+      throw FormatException(passwordError);
+    }
+
+    if (password.trim() != confirmPassword.trim()) {
+      throw const FormatException('Passwords do not match.');
+    }
+
+    return await _authService.register(
+      username: username.trim(),
+      email: email.trim(),
+      password: password.trim(),
+    );
+  }
+
+  /// Send Password Reset Email
+  Future<void> sendPasswordResetEmail(String email) async {
+    final emailError = validateEmail(email);
+    if (emailError != null) {
+      throw FormatException(emailError);
+    }
+
+    await FirebaseAuth.instance.sendPasswordResetEmail(
+      email: email.trim(),
+    );
+  }
+
+  /// Logout user
+  Future<void> logout() async {
+    await _authService.logout();
+  }
+}

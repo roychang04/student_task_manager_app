@@ -1,7 +1,9 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import '../services/auth_service.dart';
+import '../controllers/auth_controller.dart';
 import 'auth_wrapper.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -12,19 +14,24 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  final AuthService _authService = AuthService();
+  // MVC Controller instance
+  final AuthController _authController = AuthController();
 
   final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
+  Timer? _usernameDebounceTimer;
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  bool _isCheckingUsername = false;
+  bool _isUsernameTaken = false;
 
   @override
   void dispose() {
+    _usernameDebounceTimer?.cancel();
     _usernameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
@@ -32,101 +39,98 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
+  void _onUsernameChanged(String value) {
+    _usernameDebounceTimer?.cancel();
+    final trimmed = value.trim();
+
+    if (trimmed.isEmpty) {
+      setState(() {
+        _isCheckingUsername = false;
+        _isUsernameTaken = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _isCheckingUsername = true;
+      _isUsernameTaken = false;
+    });
+
+    _usernameDebounceTimer = Timer(const Duration(milliseconds: 500), () async {
+      final isTaken = await _authController.isUsernameTaken(trimmed);
+      if (!mounted) return;
+      setState(() {
+        _isCheckingUsername = false;
+        _isUsernameTaken = isTaken;
+      });
+    });
+  }
+
   Future<void> _register() async {
     if (_isLoading) return;
 
     final username = _usernameController.text.trim();
     final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
-    final confirmPassword = _confirmPasswordController.text.trim();
+    final password = _passwordController.text;
+    final confirmPassword = _confirmPasswordController.text;
 
-    if (username.isEmpty) {
+    if (_isUsernameTaken) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please enter your username.'),
+          content: Text('Username is already taken.'),
         ),
       );
       return;
     }
-
-    if (email.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter your email.'),
-        ),
-      );
-      return;
-    }
-
-    if (password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter a password.'),
-        ),
-      );
-      return;
-    }
-
-    if (password.length < 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Password must be at least 6 characters.'),
-        ),
-      );
-      return;
-    }
-
-    if (password != confirmPassword) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Passwords do not match.'),
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-    });
 
     try {
-      await _authService.register(
+      // Validate inputs using AuthController
+      setState(() {
+        _isLoading = true;
+      });
+
+      await _authController.register(
         username: username,
         email: email,
         password: password,
+        confirmPassword: confirmPassword,
       );
 
       // Sign out so the user logs in with their new credentials.
-      await _authService.logout();
+      await _authController.logout();
 
       if (!mounted) return;
 
       _showSuccessDialog();
+    } on FormatException catch (error) {
+      if (!mounted) return;
+      if (error.message == 'Username is already taken.') {
+        setState(() {
+          _isUsernameTaken = true;
+        });
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
     } on FirebaseAuthException catch (error) {
       if (!mounted) return;
 
       String message;
-
       switch (error.code) {
         case 'email-already-in-use':
           message = 'An account already exists with this email.';
           break;
-
         case 'invalid-email':
           message = 'Please enter a valid email address.';
           break;
-
         case 'weak-password':
-          message = 'Password is too weak. Use at least 6 characters.';
+          message = 'Password is too weak. Please follow requirements.';
           break;
-
         case 'operation-not-allowed':
           message = 'Email/password sign-up is not enabled.';
           break;
-
         default:
-          message =
-              error.message ?? 'Registration failed. Please try again.';
+          message = error.message ?? 'Registration failed. Please try again.';
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -278,7 +282,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
     String hintText, {
     Widget? prefixIcon,
     Widget? suffixIcon,
+    Color? customBorderColor,
   }) {
+    final borderSide = customBorderColor != null
+        ? BorderSide(color: customBorderColor, width: 1.5)
+        : BorderSide(color: Colors.grey.shade300);
+
+    final focusedSide = customBorderColor != null
+        ? BorderSide(color: customBorderColor, width: 2.0)
+        : const BorderSide(color: Color(0xff4F46E5), width: 1.5);
+
     return InputDecoration(
       hintText: hintText,
       filled: true,
@@ -291,22 +304,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(
-          color: Colors.grey.shade300,
-        ),
+        borderSide: borderSide,
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(
-          color: Colors.grey.shade300,
-        ),
+        borderSide: borderSide,
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(
-          color: Color(0xff4F46E5),
-          width: 1.5,
-        ),
+        borderSide: focusedSide,
       ),
       disabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
@@ -330,8 +336,63 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
+  Widget _buildPasswordRequirement(String label, bool isMet) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 3),
+      child: Row(
+        children: [
+          Icon(
+            isMet ? Icons.check_circle_rounded : Icons.circle_outlined,
+            size: 14,
+            color: isMet ? const Color(0xff10B981) : Colors.grey.shade400,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: isMet ? const Color(0xff065F46) : Colors.grey.shade600,
+              fontWeight: isMet ? FontWeight.w600 : FontWeight.normal,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final currentUsername = _usernameController.text.trim();
+    final isUsernameNotEmpty = currentUsername.isNotEmpty;
+    final isUsernameAvailable =
+        isUsernameNotEmpty && !_isCheckingUsername && !_isUsernameTaken;
+
+    Color? usernameBorderColor;
+    if (_isUsernameTaken) {
+      usernameBorderColor = Colors.red;
+    } else if (isUsernameAvailable) {
+      usernameBorderColor = const Color(0xff10B981);
+    }
+
+    final currentPassword = _passwordController.text;
+    final confirmPassword = _confirmPasswordController.text;
+
+    final hasMinLength = currentPassword.length >= 6;
+    final hasCapital = currentPassword.contains(RegExp(r'[A-Z]'));
+    final hasNumber = currentPassword.contains(RegExp(r'[0-9]'));
+    final hasSpecial = currentPassword.contains(RegExp(r'[^a-zA-Z0-9]'));
+
+    final isConfirmNotEmpty = confirmPassword.isNotEmpty;
+    final isPasswordMismatch = isConfirmNotEmpty && confirmPassword != currentPassword;
+    final isPasswordMatch = isConfirmNotEmpty && confirmPassword == currentPassword;
+
+    Color? confirmBorderColor;
+    if (isPasswordMismatch) {
+      confirmBorderColor = Colors.red;
+    } else if (isPasswordMatch) {
+      confirmBorderColor = const Color(0xff10B981);
+    }
+
     return PopScope(
       canPop: !_isLoading,
       child: Scaffold(
@@ -415,15 +476,89 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           controller: _usernameController,
                           enabled: !_isLoading,
                           textInputAction: TextInputAction.next,
+                          onChanged: _onUsernameChanged,
                           decoration: _inputDecoration(
                             'Enter your username',
+                            customBorderColor: usernameBorderColor,
                             prefixIcon: Icon(
                               Icons.person_outline_rounded,
-                              color: Colors.grey.shade500,
+                              color: _isUsernameTaken
+                                  ? Colors.red
+                                  : (isUsernameAvailable
+                                      ? const Color(0xff10B981)
+                                      : Colors.grey.shade500),
                               size: 20,
                             ),
                           ),
                         ),
+                        if (_isCheckingUsername)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 6, left: 2),
+                            child: Row(
+                              children: [
+                                SizedBox(
+                                  width: 12,
+                                  height: 12,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Color(0xff4F46E5),
+                                  ),
+                                ),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Checking username availability...',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        if (_isUsernameTaken)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 6, left: 2),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.error_outline_rounded,
+                                  size: 14,
+                                  color: Colors.red,
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Username is already taken',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.red,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        if (isUsernameAvailable)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 6, left: 2),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.check_circle_rounded,
+                                  size: 14,
+                                  color: Color(0xff10B981),
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Username is available',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xff065F46),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
 
                         const SizedBox(height: 16),
 
@@ -451,6 +586,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           enabled: !_isLoading,
                           obscureText: _obscurePassword,
                           textInputAction: TextInputAction.next,
+                          onChanged: (_) => setState(() {}),
                           decoration: _inputDecoration(
                             'Enter your password',
                             prefixIcon: Icon(
@@ -475,6 +611,38 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                         ),
 
+                        const SizedBox(height: 8),
+
+                        // Password Requirements Card
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xffF9FAFB),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: Colors.grey.shade200,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Password Must Contain:',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              _buildPasswordRequirement('At least 6 characters', hasMinLength),
+                              _buildPasswordRequirement('At least one capital letter (A-Z)', hasCapital),
+                              _buildPasswordRequirement('At least one number (0-9)', hasNumber),
+                              _buildPasswordRequirement('At least one special character (!@#\$% etc)', hasSpecial),
+                            ],
+                          ),
+                        ),
+
                         const SizedBox(height: 16),
 
                         _inputLabel('Confirm Password'),
@@ -483,12 +651,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           enabled: !_isLoading,
                           obscureText: _obscureConfirmPassword,
                           textInputAction: TextInputAction.done,
+                          onChanged: (_) => setState(() {}),
                           onSubmitted: (_) => _register(),
                           decoration: _inputDecoration(
                             'Confirm your password',
+                            customBorderColor: confirmBorderColor,
                             prefixIcon: Icon(
                               Icons.lock_outline_rounded,
-                              color: Colors.grey.shade500,
+                              color: isPasswordMismatch
+                                  ? Colors.red
+                                  : (isPasswordMatch
+                                      ? const Color(0xff10B981)
+                                      : Colors.grey.shade500),
                               size: 20,
                             ),
                             suffixIcon: IconButton(
@@ -508,6 +682,53 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             ),
                           ),
                         ),
+
+                        // Live Confirm Password Match Indicator
+                        if (isPasswordMismatch)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 6, left: 2),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.error_outline_rounded,
+                                  size: 14,
+                                  color: Colors.red,
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Passwords do not match',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.red,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                        if (isPasswordMatch)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 6, left: 2),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.check_circle_rounded,
+                                  size: 14,
+                                  color: Color(0xff10B981),
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Passwords match',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xff065F46),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
 
                         const SizedBox(height: 24),
 
