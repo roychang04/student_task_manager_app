@@ -34,6 +34,24 @@ class AuthController {
     return null;
   }
 
+  /// Returns list of unmet password requirement labels
+  static List<String> getUnmetPasswordRequirements(String password) {
+    final List<String> unmet = [];
+    if (password.length < 6) {
+      unmet.add('At least 6 characters');
+    }
+    if (!password.contains(RegExp(r'[A-Z]'))) {
+      unmet.add('At least one capital letter (A-Z)');
+    }
+    if (!password.contains(RegExp(r'[0-9]'))) {
+      unmet.add('At least one number (0-9)');
+    }
+    if (!password.contains(RegExp(r'[^a-zA-Z0-9]'))) {
+      unmet.add('At least one special character (!@#\$% etc)');
+    }
+    return unmet;
+  }
+
   /// Validates email format
   static String? validateEmail(String email) {
     if (email.trim().isEmpty) {
@@ -60,23 +78,78 @@ class AuthController {
     return snapshot.docs.isNotEmpty;
   }
 
-  /// Login user with email and password
+  /// Login user with Email OR Username + Password
   Future<UserCredential> login({
-    required String email,
+    required String identifier, // Email or Username
     required String password,
   }) async {
-    final emailError = validateEmail(email);
-    if (emailError != null) {
-      throw FormatException(emailError);
+    final cleanIdentifier = identifier.trim();
+    final cleanPassword = password.trim();
+
+    if (cleanIdentifier.isEmpty) {
+      throw const FormatException('EMPTY_IDENTIFIER');
     }
-    if (password.trim().isEmpty) {
-      throw const FormatException('Please enter your password.');
+    if (cleanPassword.isEmpty) {
+      throw const FormatException('EMPTY_PASSWORD');
     }
 
-    return await _authService.login(
-      email: email.trim(),
-      password: password.trim(),
-    );
+    String emailToUse = cleanIdentifier;
+
+    if (cleanIdentifier.contains('@')) {
+      // Check email format
+      final formatError = validateEmail(cleanIdentifier);
+      if (formatError != null) {
+        throw const FormatException('INVALID_EMAIL_FORMAT');
+      }
+
+      // Check if email exists in database
+      final snapshot = await FirebaseFirestore.instance
+          .collection('userdata')
+          .where('email', isEqualTo: cleanIdentifier)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) {
+        throw const FormatException('USER_NOT_FOUND');
+      }
+    } else {
+      // Input is a username
+      final snapshot = await FirebaseFirestore.instance
+          .collection('userdata')
+          .where('username', isEqualTo: cleanIdentifier)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) {
+        throw const FormatException('USER_NOT_FOUND');
+      }
+
+      final userData = snapshot.docs.first.data();
+      final fetchedEmail = userData['email']?.toString();
+
+      if (fetchedEmail == null || fetchedEmail.isEmpty) {
+        throw const FormatException('USER_NOT_FOUND');
+      }
+
+      emailToUse = fetchedEmail;
+    }
+
+    try {
+      return await _authService.login(
+        email: emailToUse,
+        password: cleanPassword,
+      );
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'user-not-found' || e.code == 'invalid-email') {
+        throw const FormatException('USER_NOT_FOUND');
+      } else if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+        throw const FormatException('WRONG_PASSWORD');
+      } else if (e.code == 'user-disabled') {
+        throw const FormatException('USER_DISABLED');
+      } else {
+        throw FormatException(e.message ?? 'Login failed.');
+      }
+    }
   }
 
   /// Register user and create user profile in Firestore
