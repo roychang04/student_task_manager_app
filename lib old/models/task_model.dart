@@ -69,31 +69,4 @@ class TaskModel {
       'title': title,
     };
   }
-
-
- /// Whether this task is overdue as of [now].
-  ///
-  /// A task already marked 'Completed' is never overdue, regardless of
-  /// its due date.
-  bool isOverdue(DateTime now) {
-    if (status == 'Completed') {
-      return false;
-    }
-
-    return now.isAfter(dueDate) || now.isAtSameMomentAs(dueDate);
-  }
-
-  /// The status that should actually be displayed to the user as of [now].
-  ///
-  /// This is business logic (a task whose due date has passed is
-  /// "Overdue" even if its stored `status` still says 'Pending'), so it
-  /// lives on the model rather than being recomputed in every screen
-  /// that shows a task.
-  String effectiveStatus(DateTime now) {
-    if (isOverdue(now)) {
-      return 'Overdue';
-    }
-
-    return status;
-  }
 }
